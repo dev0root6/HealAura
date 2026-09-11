@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Entry } from '../api'
+import type { EntryResponse } from '../api'
 
 interface EntryInputProps {
-  onSubmit: (rawText: string) => Promise<Entry[]>
-  onSubmitted: (entries: Entry[]) => void
+  onSubmit: (rawText: string) => Promise<EntryResponse>
+  onSubmitted: (response: EntryResponse, rawText: string) => void
 }
 
 export default function EntryInput({ onSubmit, onSubmitted }: EntryInputProps) {
@@ -19,8 +19,8 @@ export default function EntryInput({ onSubmit, onSubmitted }: EntryInputProps) {
     setBusy(true)
     setError(null)
     try {
-      const entries = await onSubmit(raw)
-      onSubmitted(entries)
+      const response = await onSubmit(raw)
+      onSubmitted(response, raw)
       setText('')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -39,7 +39,7 @@ export default function EntryInput({ onSubmit, onSubmitted }: EntryInputProps) {
         disabled={busy}
       />
       <button type="submit" disabled={busy || !text.trim()}>
-        {busy ? 'Classifying…' : 'Submit'}
+        {busy ? 'Listening…' : 'Tell'}
       </button>
       {error && <p className="error">{error}</p>}
     </form>

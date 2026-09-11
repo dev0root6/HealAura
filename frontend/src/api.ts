@@ -13,6 +13,7 @@ export interface Entry {
   corrected_sentiment: string | null
   alert_sent: boolean
   is_fallback: boolean
+  message_id: string | null
   created_at: string
 }
 
@@ -36,8 +37,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>
 }
 
-export async function submitEntry(rawText: string): Promise<Entry[]> {
-  return request<Entry[]>(`${BASE}/entries`, {
+export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  kind: string
+  needs_support: boolean
+  created_at: string
+}
+
+export interface EntryResponse {
+  entries: Entry[]
+  reply: Message
+}
+
+export async function submitEntry(rawText: string): Promise<EntryResponse> {
+  return request<EntryResponse>(`${BASE}/entries`, {
+    method: 'POST',
+    body: JSON.stringify({ raw_text: rawText }),
+  })
+}
+
+export async function getMessages(date?: string): Promise<Message[]> {
+  const params = date ? `?date=${date}` : ''
+  return request<Message[]>(`${BASE}/entries/messages${params}`)
+}
+
+export async function askForSuggestion(rawText: string): Promise<Message> {
+  return request<Message>(`${BASE}/entries/suggest`, {
     method: 'POST',
     body: JSON.stringify({ raw_text: rawText }),
   })

@@ -7,7 +7,7 @@ from uuid import UUID
 import asyncpg
 from dotenv import load_dotenv
 
-from models import EntryOut, Segment
+from models import EntryOut, MessageOut, Segment
 
 load_dotenv()
 
@@ -35,8 +35,20 @@ CREATE TABLE IF NOT EXISTS entries (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Added after the first tables were created, so apply it separately too.
+CREATE TABLE IF NOT EXISTS messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'entry',
+    needs_support BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages (created_at);
+
+-- Added after the first tables were created, so apply them separately too.
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS is_fallback BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE entries ADD COLUMN IF NOT EXISTS message_id UUID REFERENCES messages (id) ON DELETE SET NULL;
 """
 
 
@@ -73,7 +85,11 @@ async def check_health() -> bool:
 
 
 async def insert_segments(
-    raw_text: str, segments: list[Segment], *, is_fallback: bool = False
+    raw_text: str,
+    segments: list[Segment],
+    *,
+    is_fallback: bool = False,
+    message_id: Optional[UUID] = None,
 ) -> list[EntryOut]:
     """Persist all classified segments for one raw entry, returning stored rows."""
     pool = await get_pool()
@@ -86,9 +102,9 @@ async def insert_segments(
                     INSERT INTO entries (
                         raw_text, segment_text, entry_type, sentiment,
                         event_date, event_time, person, ai_confidence,
-                        is_fallback
+                        is_fallback, message_id
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     RETURNING *
                     """,
                     raw_text,
@@ -100,6 +116,7 @@ async def insert_segments(
                     seg.person,
                     seg.ai_confidence,
                     is_fallback,
+                    message_id,
                 )
                 rows.append(EntryOut.model_validate(dict(row)))
     return rows
@@ -160,3 +177,41 @@ async def update_entry(
             corrected_sentiment,
         )
     return EntryOut.model_validate(dict(row)) if row else None
+
+
+async def insert_message(
+    role: str,
+    content: str,
+    *,
+    kind: str = "entry",
+    needs_support: bool = False,
+) -> MessageOut:
+    """Append one turn to the conversation thread."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO messages (role, content, kind, needs_support)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+            """,
+            role,
+            content,
+            kind,
+            needs_support,
+        )
+    return MessageOut.model_validate(dict(row))
+
+
+async def fetch_messages_by_date(day: date) -> list[MessageOut]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetch(
+            """
+            SELECT * FROM messages
+            WHERE created_at::date = $1::date
+            ORDER BY created_at ASC
+            """,
+            day,
+        )
+    return [MessageOut.model_validate(dict(r)) for r in result]

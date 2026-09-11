@@ -52,7 +52,32 @@ class EntryOut(BaseModel):
     corrected_sentiment: Optional[str] = None
     alert_sent: bool = False
     is_fallback: bool = False
+    message_id: Optional[UUID] = None
     created_at: datetime
+
+
+class MessageOut(BaseModel):
+    """One turn of the journaling conversation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    role: str
+    content: str
+    kind: str
+    needs_support: bool
+    created_at: datetime
+
+
+class EntryResponse(BaseModel):
+    """What POST /entries returns: the structured segments plus the reply."""
+
+    entries: list["EntryOut"]
+    reply: MessageOut
+
+
+class SuggestRequest(BaseModel):
+    raw_text: str = Field(min_length=1)
 
 
 class EntryCorrection(BaseModel):
