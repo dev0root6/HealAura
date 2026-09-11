@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'entry',
     needs_support BOOLEAN NOT NULL DEFAULT FALSE,
+    language_code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -49,6 +50,7 @@ CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages (created_at);
 -- Added after the first tables were created, so apply them separately too.
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS is_fallback BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS message_id UUID REFERENCES messages (id) ON DELETE SET NULL;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS language_code TEXT;
 """
 
 
@@ -185,20 +187,22 @@ async def insert_message(
     *,
     kind: str = "entry",
     needs_support: bool = False,
+    language_code: Optional[str] = None,
 ) -> MessageOut:
     """Append one turn to the conversation thread."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO messages (role, content, kind, needs_support)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO messages (role, content, kind, needs_support, language_code)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
             """,
             role,
             content,
             kind,
             needs_support,
+            language_code,
         )
     return MessageOut.model_validate(dict(row))
 

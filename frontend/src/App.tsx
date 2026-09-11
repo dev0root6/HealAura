@@ -4,6 +4,7 @@ import type { Entry, EntryResponse, Message } from './api'
 import Conversation from './components/Conversation'
 import EntryInput from './components/EntryInput'
 import ReminderList from './components/ReminderList'
+import { useVoiceReply } from './hooks/useVoiceReply'
 
 export default function App() {
   const [entries, setEntries] = useState<Entry[]>([])
@@ -11,6 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [eventsKey, setEventsKey] = useState(0)
+  const voice = useVoiceReply()
 
   const refresh = useCallback(async () => {
     try {
@@ -38,11 +40,13 @@ export default function App() {
       content: rawText,
       kind: 'entry',
       needs_support: false,
+      language_code: response.reply.language_code,
       created_at: response.reply.created_at,
     }
     setMessages((prev) => [...prev, userTurn, response.reply])
     setEntries((prev) => [...prev, ...response.entries])
     setEventsKey((k) => k + 1)
+    voice.play(response.reply)
   }
 
   function handleUpdated(updated: Entry) {
@@ -52,13 +56,24 @@ export default function App() {
 
   function handleSuggestion(message: Message) {
     setMessages((prev) => [...prev, message])
+    voice.play(message)
   }
 
   return (
     <div className="app">
       <header>
-        <h1>HealAura</h1>
-        <p className="subtitle">Daily reflection journal</p>
+        <div>
+          <h1>HealAura</h1>
+          <p className="subtitle">Daily reflection journal</p>
+        </div>
+        <button
+          type="button"
+          className={`voice-toggle${voice.enabled ? ' on' : ''}`}
+          onClick={voice.toggle}
+          aria-pressed={voice.enabled}
+        >
+          {voice.enabled ? '🔊 Voice on' : '🔇 Voice off'}
+        </button>
       </header>
       <main>
         <section>

@@ -43,12 +43,17 @@ export interface Message {
   content: string
   kind: string
   needs_support: boolean
+  language_code: string | null
   created_at: string
 }
 
 export interface EntryResponse {
   entries: Entry[]
   reply: Message
+}
+
+export interface AudioEntryResponse extends EntryResponse {
+  transcript: string
 }
 
 export async function submitEntry(rawText: string): Promise<EntryResponse> {
@@ -86,4 +91,36 @@ export async function correctEntry(
 
 export async function getEvents(): Promise<Entry[]> {
   return request<Entry[]>(`${BASE}/events`)
+}
+
+export async function submitAudio(blob: Blob): Promise<AudioEntryResponse> {
+  const form = new FormData()
+  // The extension matters to the API's format sniffing, so keep it in step
+  // with whatever MIME type MediaRecorder actually gave us.
+  const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'mp4' : 'webm'
+  form.append('file', blob, `entry.${ext}`)
+
+  const resp = await fetch(`${BASE}/entries/audio`, { method: 'POST', body: form })
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch {
+      /* ignore non-JSON errors */
+    }
+    throw new Error(detail)
+  }
+  return resp.json() as Promise<AudioEntryResponse>
+}
+
+/** Fetches spoken audio for a reply. Returns an object URL the caller owns. */
+export async function speak(text: string, languageCode: string | null): Promise<string> {
+  const resp = await fetch(`${BASE}/entries/speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, language_code: languageCode }),
+  })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return URL.createObjectURL(await resp.blob())
 }

@@ -66,6 +66,7 @@ class MessageOut(BaseModel):
     content: str
     kind: str
     needs_support: bool
+    language_code: Optional[str] = None
     created_at: datetime
 
 
@@ -78,6 +79,17 @@ class EntryResponse(BaseModel):
 
 class SuggestRequest(BaseModel):
     raw_text: str = Field(min_length=1)
+
+
+class AudioEntryResponse(EntryResponse):
+    """An entry created from speech, with the transcript that produced it."""
+
+    transcript: str
+
+
+class SpeechRequest(BaseModel):
+    text: str = Field(min_length=1)
+    language_code: Optional[str] = None
 
 
 class EntryCorrection(BaseModel):

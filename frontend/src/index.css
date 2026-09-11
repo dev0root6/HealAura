@@ -303,3 +303,80 @@ button.link {
 .turn-detail .entry-list {
   margin-top: 0.5rem;
 }
+
+/* --- voice --- */
+.app > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.voice-toggle {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.voice-toggle.on,
+.voice-toggle:hover {
+  opacity: 1;
+}
+
+.input-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button.mic {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.mic.recording {
+  border-color: #e53935;
+  color: #e53935;
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+button.mic:disabled {
+  opacity: 0.4;
+  cursor: default;
+  animation: none;
+}
+
+.recording-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+@keyframes mic-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.mic.recording {
+    animation: none;
+  }
+}

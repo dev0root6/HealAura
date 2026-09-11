@@ -6,19 +6,26 @@ from typing import Optional
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 
 import backchannel
 import classify
 import db
+import sarvam_client
 from models import (
+    AudioEntryResponse,
     EntryCorrection,
     EntryRequest,
     EntryResponse,
     EntryOut,
     MessageOut,
+    SpeechRequest,
     SuggestRequest,
 )
+
+# Roughly 10 minutes of Opus at speech bitrates; the endpoint is for a couple
+# of minutes of talking, not for uploading media.
+MAX_AUDIO_BYTES = 15 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +39,14 @@ async def create_entries(payload: EntryRequest) -> EntryResponse:
     Classification and the backchannel reply are independent, so they run
     concurrently — the user waits for one round trip, not two.
     """
-    raw_text = payload.raw_text.strip()
+    return await _record_entry(payload.raw_text)
+
+
+async def _record_entry(
+    text: str, *, language_code: Optional[str] = None
+) -> EntryResponse:
+    """Shared path for typed and spoken entries."""
+    raw_text = text.strip()
     if not raw_text:
         raise HTTPException(status_code=400, detail="raw_text cannot be empty")
 
@@ -52,7 +66,7 @@ async def create_entries(payload: EntryRequest) -> EntryResponse:
     reply_text, needs_support = answered
 
     segments, used_fallback = classified
-    user_msg = await db.insert_message("user", raw_text)
+    user_msg = await db.insert_message("user", raw_text, language_code=language_code)
     stored = await db.insert_segments(
         raw_text, segments, is_fallback=used_fallback, message_id=user_msg.id
     )
@@ -60,7 +74,7 @@ async def create_entries(payload: EntryRequest) -> EntryResponse:
         logger.warning("Stored fallback (unclassified) segments for: %r", raw_text)
 
     reply = await db.insert_message(
-        "assistant", reply_text, needs_support=needs_support
+        "assistant", reply_text, needs_support=needs_support, language_code=language_code
     )
     return EntryResponse(entries=stored, reply=reply)
 
@@ -104,3 +118,51 @@ async def ask_for_suggestion(payload: SuggestRequest) -> MessageOut:
     if not advice:
         raise HTTPException(status_code=502, detail="Empty suggestion from Sarvam")
     return await db.insert_message("assistant", advice, kind="suggestion")
+
+
+@router.post("/audio", response_model=AudioEntryResponse)
+async def create_entry_from_audio(file: UploadFile = File(...)) -> AudioEntryResponse:
+    """Transcribe a spoken entry and run it through the normal entry path.
+
+    Transcription is awaited rather than backgrounded: the reply is the whole
+    point of the interaction, and polling for it would break the conversation.
+    """
+    audio = await file.read()
+    if not audio:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+    if len(audio) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio too large (limit 15 MB)")
+
+    try:
+        transcript, detected_language = await sarvam_client.transcribe(
+            audio,
+            filename=file.filename or "entry.webm",
+            content_type=file.content_type or "audio/webm",
+        )
+    except RuntimeError as exc:
+        logger.warning("Transcription failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    if not transcript:
+        raise HTTPException(
+            status_code=422, detail="Could not make out any speech in that recording"
+        )
+
+    recorded = await _record_entry(transcript, language_code=detected_language)
+    return AudioEntryResponse(
+        entries=recorded.entries, reply=recorded.reply, transcript=transcript
+    )
+
+
+@router.post("/speech")
+async def speak(payload: SpeechRequest) -> Response:
+    """Render text as speech. Returns raw audio for the browser to play."""
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text cannot be empty")
+    try:
+        audio = await sarvam_client.synthesize(text, language_code=payload.language_code)
+    except RuntimeError as exc:
+        logger.warning("Speech synthesis failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(content=audio, media_type="audio/wav")
