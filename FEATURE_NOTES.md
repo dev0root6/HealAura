@@ -306,3 +306,52 @@ routing in Section III-D.
   - **24 h expiry**: hidden from reads at once, and purged every 10 minutes.
 - **Bug I caused and fixed:** inserting the purge loop briefly put `@asynccontextmanager` on the wrong
   function, which made the server fail to start. Fixed within minutes; your 8000 server reloaded fine.
+
+---
+
+## Round 5 (2026-10-04): pinned chat input, email reminders, daily diary
+
+- **Chat layout:** messages scroll inside the chat panel and the input stays pinned at the bottom.
+  The panel is sized to the space left on screen (JS, on resize), and the textarea is 2 rows on
+  phones. Auto-scrolls to the newest message.
+- **Alerts are email** (asked): close-friend check-ins and the user's own check-in go out by email
+  from the HealAura address. The in-app crisis card is in addition to that.
+- **Email reminders for events** (`backend/scheduler.py`, every minute in-process):
+  - Timed events: 1 h before. Date-only events: at 8 AM that day.
+  - A late-written event still due gets its email right away. Past events are never emailed, and each
+    event is emailed once (`entries.reminder_sent_at`).
+  - The Reminders list shows "Emailed". Tested: due → sent, later/tomorrow/past → not sent, re-run →
+    no duplicates.
+- **Your daily day life** (`backend/daily.py`, `GET /entries/day`, "Daily life" tab):
+  - A first-person diary page from the day's messages plus what was picked up.
+  - Contents: title, mood, highlights, coming up. In the language written in.
+  - Cached in `day_summaries` and regenerated only when there are new entries (or on "Rewrite").
+  - Browse earlier days with the arrows.
+- **Production bug fixed:** after adding a column, `/entries` and `/events` returned 500
+  (`InvalidCachedStatementError`). Neon's pooled endpoint shares prepared statements, which go stale
+  on schema changes. The pool now uses `statement_cache_size=0`.
+- **Voices:** Orpheus is rechecked every 2 minutes after a failure (was 10), so accepting the Groq
+  terms takes effect quickly.
+- **Layout:** app max width 760 → 860 px so the 6 tabs fit.
+
+---
+
+## Round 6 (2026-10-04): crisis alerts must always reach friends
+
+- **Bug:** Dev's "am gonna do suicide" (17:32 UTC) was correctly flagged as a crisis, but the 12 h
+  cooldown from an earlier alert (13:43 UTC) silently held the email back.
+- **Fix:** a crisis no longer uses the 12 h cooldown. It emails friends + the user straight away,
+  held back only if another *crisis* alert went out in the last 60 min (`CRISIS_COOLDOWN_MINUTES`).
+  Ordinary "sustained" check-ins keep the 12 h cooldown.
+- **Disguised spellings:** the phrase safety net now normalises text before matching. It catches:
+  - look-alike characters: SU1c1de, $uicide, k!ll mys3lf, d1e
+  - spaced or dotted letters: s.u.i.c.i.d.e, "s u i c i d e"
+  - stretched letters: suuuicide
+  - slang: "unalive", "kms"
+
+  12/12 caught; no false positives on "exam was killing me", "kill for biryani", "sms me".
+- **Language:** an English crisis example was added so English crisis messages no longer get a
+  Tanglish reply.
+- **Verified on the live backend:** a test account with an ordinary alert 1 h earlier sent
+  "i wanna SU1c1de". The friend and the user were both emailed; a second crisis a minute later was
+  correctly held by the 1 h crisis limit. Test account deleted.

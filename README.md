@@ -13,6 +13,10 @@ The app sits behind a login (public landing page → sign in → app). Once insi
 
 Plus **My trends** (daily sentiment and a smoothed "heaviness" line) and an immediate crisis card with helplines when an entry mentions self-harm.
 
+**Your daily day life:** a "Daily life" tab where HealAura writes the day as a first-person diary page (title, mood, moments worth keeping, coming up), in the language you wrote in. It updates as the day goes on, and you can browse earlier days.
+
+**Email reminders:** events you mention ("interview tomorrow at 10") are emailed to you 1 hour before, or at 8 AM on the day if there's no time (`REMINDER_TIMEZONE`, default `Asia/Kolkata`).
+
 **Profile:** after sign-up (and for older accounts, via a "Finish setting up your account" prompt) people set what HealAura should call them, the language they speak, their interests, and a verified email if they don't have one. HealAura always replies in the language the person writes in; the chosen language is the fallback. `backend/send_setup_reminders.py` emails older accounts once to finish setup.
 
 **Accounts are self-registered.** Sign up with your email → HealAura emails a 6-digit code → enter it → choose a username and password. Sign in with either the username or the email. Journal data is per-user and private to each account. (Without SMTP configured, the code is written to the backend log so sign-up can still be tested.)
@@ -107,6 +111,7 @@ All endpoints except `/health`, `/auth/login` and `/auth/register/*` require an 
 | `GET` | `/entries?date=` | List the user's entries (optionally filtered by day) |
 | `PATCH` | `/entries/{id}` | Correct an entry's classification |
 | `GET` | `/entries/messages` | Fetch the conversation thread |
+| `GET` | `/entries/day?date=&refresh=` | The day's diary page (generated or cached) and days to browse |
 | `GET` | `/entries/trends?days=` | Daily sentiment counts and smoothed heaviness score |
 | `POST` | `/entries/suggest` | Request a suggestion |
 | `POST` | `/entries/audio` | Submit a voice entry (uploaded audio) |

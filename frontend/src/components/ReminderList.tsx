@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { User } from 'lucide-react'
+import { MailCheck, User } from 'lucide-react'
 import { getEvents } from '../api'
 import type { Entry } from '../api'
 
@@ -42,14 +42,24 @@ export default function ReminderList({ refreshKey = 0 }: ReminderListProps) {
   if (events.length === 0) return <p className="muted">No upcoming events.</p>
 
   return (
+    <>
+    <p className="muted small reminder-note">
+      You'll get an email 1 hour before (or at 8 AM, if there's no time).
+    </p>
     <ul className="reminder-list">
       {events.map((event) => (
         <li key={event.id} className="reminder-card">
           <span className="reminder-when">{formatWhen(event)}</span>
           <span className="reminder-text">{event.segment_text}</span>
           {event.person && <span className="tag person"><User size={13} aria-hidden="true" /> {event.person}</span>}
+          {event.reminder_sent_at && (
+            <span className="tag confirmed-tag" title="Email reminder sent">
+              <MailCheck size={13} aria-hidden="true" /> Emailed
+            </span>
+          )}
         </li>
       ))}
     </ul>
+    </>
   )
 }

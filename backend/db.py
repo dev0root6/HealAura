@@ -114,6 +114,23 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES community_messages (id) ON DELETE SET NULL;
 
+-- When the email reminder for an event went out (once per event).
+ALTER TABLE entries ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
+
+-- "Your daily day life": a diary page written from each day's entries.
+CREATE TABLE IF NOT EXISTS day_summaries (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    day DATE NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    mood TEXT,
+    highlights TEXT[] NOT NULL DEFAULT '{}',
+    looking_ahead TEXT[] NOT NULL DEFAULT '{}',
+    entry_count INT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, day)
+);
+
 -- Well-being alerts that went out, so the user can see when and to whom.
 CREATE TABLE IF NOT EXISTS well_being_alerts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -186,7 +203,12 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         if not DATABASE_URL:
             raise RuntimeError("NEON_DATABASE_URL is not set in .env")
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+        # statement_cache_size=0: Neon's pooled endpoint shares server connections,
+        # so cached prepared statements go stale after a schema change (e.g. a new
+        # column) and fail with InvalidCachedStatementError.
+        _pool = await asyncpg.create_pool(
+            DATABASE_URL, min_size=1, max_size=10, statement_cache_size=0
+        )
     return _pool
 
 
@@ -624,6 +646,20 @@ async def list_alerts(user_id: UUID, limit: int = 10) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def last_alert_with_reason(user_id: UUID, reason: str):
+    """When an alert of this kind ('crisis', 'sustained') last actually reached someone."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            """
+            SELECT MAX(created_at) FROM well_being_alerts
+            WHERE user_id = $1 AND reason = $2 AND (friends_sent > 0 OR self_sent)
+            """,
+            user_id,
+            reason,
+        )
+
+
 async def last_alert_at(user_id: UUID):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -917,3 +953,77 @@ async def mark_setup_reminder_sent(user_id: UUID) -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("UPDATE users SET setup_reminder_sent_at = now() WHERE id = $1", user_id)
+
+
+# --- event reminders ---
+
+async def events_due_for_reminder(start: date, end: date) -> list[dict]:
+    """Un-reminded events dated between start and end (inclusive) for people with an email."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT e.id, e.segment_text, e.event_date, e.event_time, e.person,
+                   u.id AS user_id, u.username, u.preferred_name, u.email
+            FROM entries e JOIN users u ON u.id = e.user_id
+            WHERE COALESCE(e.corrected_type, e.entry_type) = 'event'
+              AND e.event_date BETWEEN $1 AND $2
+              AND e.reminder_sent_at IS NULL
+              AND NOT e.is_fallback
+              AND u.email IS NOT NULL
+            """,
+            start,
+            end,
+        )
+    return [dict(r) for r in rows]
+
+
+async def mark_reminder_sent(entry_id: UUID) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE entries SET reminder_sent_at = now() WHERE id = $1", entry_id)
+
+
+# --- daily summaries ---
+
+async def get_day_summary(user_id: UUID, day: date) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM day_summaries WHERE user_id = $1 AND day = $2", user_id, day
+        )
+    return dict(row) if row else None
+
+
+async def save_day_summary(user_id: UUID, day: date, data: dict, entry_count: int) -> dict:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO day_summaries (user_id, day, title, body, mood, highlights, looking_ahead, entry_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (user_id, day) DO UPDATE
+               SET title = EXCLUDED.title, body = EXCLUDED.body, mood = EXCLUDED.mood,
+                   highlights = EXCLUDED.highlights, looking_ahead = EXCLUDED.looking_ahead,
+                   entry_count = EXCLUDED.entry_count, updated_at = now()
+            RETURNING *
+            """,
+            user_id, day, data["title"], data["body"], data.get("mood"),
+            data.get("highlights", []), data.get("looking_ahead", []), entry_count,
+        )
+    return dict(row)
+
+
+async def days_with_entries(user_id: UUID, limit: int = 60) -> list[date]:
+    """Most recent days the person wrote anything, newest first."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT created_at::date AS day FROM messages
+            WHERE user_id = $1 AND role = 'user'
+            ORDER BY day DESC LIMIT $2
+            """,
+            user_id, limit,
+        )
+    return [r["day"] for r in rows]

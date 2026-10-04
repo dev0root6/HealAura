@@ -28,7 +28,7 @@ _client: Optional[httpx.AsyncClient] = None
 # account), stop trying for a while instead of paying a failed round trip on
 # every spoken reply.
 _tts_disabled_until = 0.0
-_TTS_BACKOFF_SECONDS = 600
+_TTS_BACKOFF_SECONDS = 120
 
 
 def available() -> bool:

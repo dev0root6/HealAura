@@ -151,9 +151,9 @@ export default function Friends() {
         )}
         <p className="muted small">
           HealAura emails your friends (and you, with helplines) when it senses a sustained rough
-          patch, or straight away for a crisis. After one goes out, it waits{' '}
-          {status?.cooldown_hours ?? 12} hours before sending another.
-          {cooling && <> Next one possible after {when(cooling)}.</>}
+          patch, waiting {status?.cooldown_hours ?? 12} hours before sending another of those.
+          {cooling && <> Next one possible after {when(cooling)}.</>} If you ever mention self-harm or
+          suicide, it emails them straight away, every time (at most once an hour).
         </p>
         <div className="test-row">
           <button

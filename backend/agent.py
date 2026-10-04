@@ -8,6 +8,7 @@ shares what was written. A cooldown stops it from messaging repeatedly.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 import db
 import email_client
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 _MIN_NEGATIVES = 3
 _WINDOW_HOURS = 24
 COOLDOWN_HOURS = 12
+# A crisis has its own, much shorter cooldown: it must never be silenced by an
+# earlier ordinary check-in, only kept from emailing friends on every message.
+CRISIS_COOLDOWN_MINUTES = 60
 
 
 async def evaluate_and_alert(
@@ -29,8 +33,8 @@ async def evaluate_and_alert(
     """Decide whether to alert the user's close friends. Returns True if sent.
 
     A crisis (explicit self-harm or suicide disclosure) skips the sustained-
-    negativity gate: waiting for three negative segments is wrong there. The
-    cooldown and the opt-in friend list still apply.
+    negativity gate and the 12-hour cooldown: it is only held back if another
+    crisis alert went out in the last hour.
 
     Failures here never propagate — the journaling flow must not break because an
     email could not be sent.
@@ -48,7 +52,15 @@ async def evaluate_and_alert(
                 )
                 return False
 
-        if not await db.alert_allowed(user.id, COOLDOWN_HOURS):
+        if crisis:
+            last = await db.last_alert_with_reason(user.id, "crisis")
+            if last and datetime.now(timezone.utc) - last < timedelta(minutes=CRISIS_COOLDOWN_MINUTES):
+                logger.info(
+                    "No alert for %s: a crisis alert already went out in the last %d min",
+                    user.username, CRISIS_COOLDOWN_MINUTES,
+                )
+                return False
+        elif not await db.alert_allowed(user.id, COOLDOWN_HOURS):
             logger.info("No alert for %s: within the %dh cooldown", user.username, COOLDOWN_HOURS)
             return False
 

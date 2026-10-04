@@ -56,6 +56,7 @@ class EntryOut(BaseModel):
     alert_sent: bool = False
     is_fallback: bool = False
     message_id: Optional[UUID] = None
+    reminder_sent_at: Optional[datetime] = None
     created_at: datetime
 
 

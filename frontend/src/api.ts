@@ -14,6 +14,8 @@ export interface Entry {
   alert_sent: boolean
   is_fallback: boolean
   message_id: string | null
+  /** When the email reminder for this event went out, if it has. */
+  reminder_sent_at: string | null
   created_at: string
 }
 
@@ -458,4 +460,30 @@ export async function speak(
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return URL.createObjectURL(await resp.blob())
+}
+
+// --- "Your daily day life" ---
+export interface DayPage {
+  title: string
+  body: string
+  mood: string | null
+  highlights: string[]
+  looking_ahead: string[]
+  entry_count: number
+  updated_at: string
+}
+
+export interface DayResponse {
+  date: string
+  page: DayPage | null
+  /** Days the person wrote anything, newest first (for browsing). */
+  days: string[]
+}
+
+export async function getDayPage(date?: string, refresh = false): Promise<DayResponse> {
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  if (refresh) params.set('refresh', 'true')
+  const qs = params.toString()
+  return request<DayResponse>(`${BASE}/entries/day${qs ? `?${qs}` : ''}`)
 }

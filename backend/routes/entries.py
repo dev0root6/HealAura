@@ -12,6 +12,7 @@ import agent
 import auth
 import backchannel
 import classify
+import daily
 import db
 import safety
 import sarvam_client
@@ -131,6 +132,25 @@ async def correct_entry(
     if updated is None:
         raise HTTPException(status_code=404, detail="Entry not found")
     return updated
+
+
+@router.get("/day")
+async def day_summary(
+    day: Optional[date] = Query(default=None, alias="date"),
+    refresh: bool = False,
+    user: UserOut = Depends(auth.get_current_user),
+) -> dict:
+    """'Your daily day life': the diary page for a day (default today), plus days to browse."""
+    target = day or date.today()
+    try:
+        page = await daily.summary_for(user, target, refresh=refresh)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "date": target,
+        "page": page and {k: page[k] for k in ("title", "body", "mood", "highlights", "looking_ahead", "entry_count", "updated_at")},
+        "days": await db.days_with_entries(user.id),
+    }
 
 
 @router.get("/trends", response_model=TrendsOut)

@@ -45,7 +45,7 @@ body {
 
 .app {
   position: relative;
-  max-width: 760px;
+  max-width: 860px;
   margin: 0 auto;
   padding: 28px 16px 72px;
 }
@@ -137,10 +137,10 @@ h2 {
   gap: 6px;
   white-space: nowrap;
   font: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--muted);
-  padding: 9px 12px;
+  padding: 9px 10px;
   border: 0;
   border-radius: 14px;
   background: transparent;
@@ -2115,4 +2115,196 @@ fieldset.field legend,
 }
 .compose-error {
   margin: 0 16px 6px;
+}
+
+/* --- Talk with AI: messages scroll, input stays put --- */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: clamp(440px, calc(100dvh - 250px), 960px);
+  margin-bottom: 18px;
+}
+.chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+.chat-head h2 {
+  margin: 0;
+}
+.chat-head .chat-options {
+  margin: 0;
+}
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 4px 8px;
+  /* Fade the top edge so scrolled-away messages don't cut off hard. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+}
+.chat-scroll .conversation {
+  margin-bottom: 0;
+}
+.chat-panel .entry-input {
+  flex: none;
+  margin: 8px 0 0;
+}
+@media (max-width: 560px) {
+  .chat-panel .entry-input {
+    padding: 10px;
+    gap: 8px;
+  }
+  .chat-panel .entry-input textarea {
+    min-height: 0;
+  }
+}
+
+/* --- Your daily day life --- */
+.daily {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.daily-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.daily-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.day-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.day-label {
+  min-width: 150px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-h);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.diary-page {
+  padding: 28px 30px 20px;
+  /* Faint ruled lines, like a notebook page. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    rgba(255, 122, 82, 0.1) 31px,
+    rgba(255, 122, 82, 0.1) 32px
+  );
+  background-color: rgba(255, 252, 248, 0.85);
+}
+.diary-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.diary-title h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-h);
+}
+.mood-chip {
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(120deg, var(--o1), var(--o2));
+}
+.diary-body {
+  margin: 0 0 14px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 32px;
+  color: var(--text-h);
+}
+.diary-list {
+  margin-top: 10px;
+}
+.diary-list h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--o2);
+}
+.diary-list ul {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.7;
+}
+.diary-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 16px;
+}
+.empty-page {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+.empty-page p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+.loading-page {
+  display: grid;
+  gap: 12px;
+}
+.skeleton {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, rgba(255, 176, 74, 0.12), rgba(255, 79, 109, 0.18), rgba(255, 176, 74, 0.12));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton.w70 { width: 70%; }
+.skeleton.w80 { width: 80%; }
+.skeleton.w90 { width: 90%; }
+.skeleton.w95 { width: 95%; }
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+@media (max-width: 560px) {
+  .diary-page {
+    padding: 20px 18px 16px;
+  }
+  .diary-body {
+    font-size: 17px;
+  }
+  .day-label {
+    min-width: 110px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }

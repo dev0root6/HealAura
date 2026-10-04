@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  BookHeart,
   ChartSpline,
   Heart,
   HeartHandshake,
@@ -15,6 +16,7 @@ import { getEntries, getMessages } from '../api'
 import type { ChatMode, Entry, EntryResponse, Message, User } from '../api'
 import Conversation from './Conversation'
 import Trends from './Trends'
+import DailyLife from './DailyLife'
 import ProfileSetup from './ProfileSetup'
 import EntryInput from './EntryInput'
 import ReminderList from './ReminderList'
@@ -24,7 +26,7 @@ import Community from './Community'
 import { useVoiceReply } from '../hooks/useVoiceReply'
 import Logo from './Logo'
 
-type Tab = 'ai' | 'trends' | 'community' | 'counsellors' | 'friends'
+type Tab = 'ai' | 'day' | 'trends' | 'community' | 'counsellors' | 'friends'
 
 const MODE_KEY = 'healaura:chat-mode'
 
@@ -55,6 +57,7 @@ function setupSnoozed(): boolean {
 export default function AppShell({ user, onLogout, onUserChange }: AppShellProps) {
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'ai', label: 'Talk with AI', icon: MessageCircleHeart },
+    { id: 'day', label: 'Daily life', icon: BookHeart },
     { id: 'trends', label: 'My trends', icon: ChartSpline },
     { id: 'community', label: 'Community', icon: Users },
     { id: 'counsellors', label: 'Counsellors', icon: HeartHandshake },
@@ -69,6 +72,35 @@ export default function AppShell({ user, onLogout, onUserChange }: AppShellProps
   const [eventsKey, setEventsKey] = useState(0)
   const voice = useVoiceReply()
   const [chatMode, setChatMode] = useState<ChatMode>(readMode)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const chatPanelRef = useRef<HTMLElement>(null)
+
+  // Fit the chat panel to the space left below it on screen, so the input is
+  // always fully visible (the header and banners wrap differently per device).
+  useEffect(() => {
+    if (tab !== 'ai') return
+    const fit = () => {
+      const el = chatPanelRef.current
+      if (!el) return
+      const top = el.getBoundingClientRect().top + window.scrollY
+      el.style.height = `${Math.max(380, window.innerHeight - top - 12)}px`
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    const ro = new ResizeObserver(fit)
+    ro.observe(document.body)
+    return () => {
+      window.removeEventListener('resize', fit)
+      ro.disconnect()
+    }
+  }, [tab, user.setup_complete])
+
+  // Keep the newest message in view: on first load, on each new turn, and when
+  // coming back to the chat tab.
+  useEffect(() => {
+    const el = chatScrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: messages.length > 2 ? 'smooth' : 'auto' })
+  }, [messages.length, tab])
   // Accounts that haven't finished setup (older accounts, or skipped) are asked once per session.
   const [profileOpen, setProfileOpen] = useState(() => !user.setup_complete && !setupSnoozed())
 
@@ -243,19 +275,11 @@ export default function AppShell({ user, onLogout, onUserChange }: AppShellProps
       <main>
         {tab === 'ai' && (
           <>
-            <section>
-              <h2>Today</h2>
-              {loadError && <p className="error">Could not load today: {loadError}</p>}
-              <Conversation
-                messages={messages}
-                entries={entries}
-                busy={loading}
-                onUpdated={handleUpdated}
-                onSuggestion={handleSuggestion}
-                onOpenTab={setTab}
-              />
-            </section>
-            <div className="chat-options" role="radiogroup" aria-label="Reply style">
+            {/* The chat scrolls inside this panel; the input stays pinned at its bottom. */}
+            <section className="chat-panel" ref={chatPanelRef}>
+              <div className="chat-head">
+                <h2>Today</h2>
+                <div className="chat-options" role="radiogroup" aria-label="Reply style">
               <span className="muted small">Replies:</span>
               {(
                 [
@@ -275,14 +299,28 @@ export default function AppShell({ user, onLogout, onUserChange }: AppShellProps
                   {label}
                 </button>
               ))}
-            </div>
-            <EntryInput mode={chatMode} onSubmitted={handleSubmitted} />
+                </div>
+              </div>
+              <div className="chat-scroll" ref={chatScrollRef}>
+                {loadError && <p className="error">Could not load today: {loadError}</p>}
+                <Conversation
+                  messages={messages}
+                  entries={entries}
+                  busy={loading}
+                  onUpdated={handleUpdated}
+                  onSuggestion={handleSuggestion}
+                  onOpenTab={setTab}
+                />
+              </div>
+              <EntryInput mode={chatMode} onSubmitted={handleSubmitted} />
+            </section>
             <section>
               <h2>Reminders</h2>
               <ReminderList refreshKey={eventsKey} />
             </section>
           </>
         )}
+        {tab === 'day' && <DailyLife onWrite={() => setTab('ai')} />}
         {tab === 'trends' && <Trends />}
         {tab === 'community' && <Community />}
         {tab === 'counsellors' && <Counsellors />}

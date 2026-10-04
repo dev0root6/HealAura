@@ -77,7 +77,7 @@ export default function EntryInput({ mode, onSubmitted }: EntryInputProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="How did your day go? (English / Tamil / Hindi / Tanglish / Hinglish)"
-        rows={3}
+        rows={window.innerWidth < 560 ? 2 : 3}
         disabled={busy || recorder.recording || live.active}
       />
       {live.active && (

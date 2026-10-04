@@ -79,7 +79,9 @@ _probe = {"ok": None, "at": 0.0}
 async def orpheus_available() -> bool:
     if not groq_client.tts_available():
         return False
-    if _probe["ok"] is not None and time.monotonic() - _probe["at"] < _PROBE_TTL:
+    # A failed probe is retried sooner, so accepting the Groq terms takes effect quickly.
+    ttl = _PROBE_TTL if _probe["ok"] else 120
+    if _probe["ok"] is not None and time.monotonic() - _probe["at"] < ttl:
         return _probe["ok"]
     try:
         await groq_client.synthesize("hi", voice="hannah")

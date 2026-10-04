@@ -7,6 +7,7 @@ from fastapi import FastAPI
 import db
 import groq_client
 import sarvam_client
+import scheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,9 +31,13 @@ async def lifespan(_app: FastAPI):
         await db.init_db()
     except Exception:
         logger.exception("Database init failed")
-    purge = asyncio.create_task(_purge_community_forever())
+    background = [
+        asyncio.create_task(_purge_community_forever()),
+        asyncio.create_task(scheduler.run_forever()),  # event reminder emails
+    ]
     yield
-    purge.cancel()
+    for task in background:
+        task.cancel()
     await sarvam_client.close_client()
     await groq_client.close_client()
     await db.close_pool()

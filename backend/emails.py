@@ -139,3 +139,23 @@ def setup_reminder(username: str) -> tuple[str, str, str]:
       <p style="margin:0;font-size:15px">Just sign in. HealAura will walk you through it in under a minute.</p>""",
     )
     return subject, text, html
+
+
+def event_reminder(name: str, what: str, when: str, person: str | None) -> tuple[str, str, str]:
+    subject = f"Reminder: {what[:60]}"
+    with_whom = f" (with {person})" if person else ""
+    text = (
+        f"Hi {name},\n\n"
+        f"A gentle reminder from your HealAura journal:\n\n"
+        f"  {what}{with_whom}\n  {when}\n\n"
+        f"You've got this.\n\n— HealAura"
+    )
+    html = _wrap(
+        "A gentle reminder",
+        f"""<p style="margin:0 0 12px;font-size:15px">Hi {escape(name)},</p>
+      <p style="margin:0 0 8px;font-size:15px">From your HealAura journal:</p>
+      <p style="margin:0 0 4px;font-size:17px;font-weight:700;color:#241812">{escape(what)}{escape(with_whom)}</p>
+      <p style="margin:0 0 14px;font-size:15px;color:#d1435b;font-weight:600">{escape(when)}</p>
+      <p style="margin:0;font-size:14px;color:#8a7266">You've got this.</p>""",
+    )
+    return subject, text, html

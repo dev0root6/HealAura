@@ -52,7 +52,10 @@ Input: "i don't see the point anymore, nothing is getting better"
 Output: {"reply": "i'm here. keep talking", "needs_support": true, "crisis": false}
 
 Input: "enakku saaganum pola iruku, ellam mudinjiduchu"
-Output: {"reply": "naan inga irukken. please stay", "needs_support": true, "crisis": true}"""
+Output: {"reply": "naan inga irukken. please stay", "needs_support": true, "crisis": true}
+
+Input: "s.u.i.c.i.d.e is all i think about"
+Output: {"reply": "i'm here with you. please stay.", "needs_support": true, "crisis": true}"""
 
 CONVERSE_PROMPT = """You are HealAura, a warm, attentive companion in a personal reflection app.
 The user has chosen "conversation" mode: they want you to actually talk with them,
