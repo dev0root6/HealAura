@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 import db
+import groq_client
 import sarvam_client
 
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,7 @@ async def lifespan(_app: FastAPI):
         logger.exception("Database init failed")
     yield
     await sarvam_client.close_client()
+    await groq_client.close_client()
     await db.close_pool()
 
 
@@ -33,8 +35,16 @@ async def health():
         return {"status": "error", "detail": str(exc)}
 
 
+from routes.auth import router as auth_router  # noqa: E402
+from routes.community import router as community_router  # noqa: E402
 from routes.entries import router as entries_router  # noqa: E402
 from routes.events import router as events_router  # noqa: E402
+from routes.friends import router as friends_router  # noqa: E402
+from routes.support import router as support_router  # noqa: E402
 
+app.include_router(auth_router)
 app.include_router(entries_router)
 app.include_router(events_router)
+app.include_router(support_router)
+app.include_router(community_router)
+app.include_router(friends_router)

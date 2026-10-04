@@ -1,0 +1,211 @@
+{
+  "truth_table": [
+    {
+      "G1": false,
+      "G2": false,
+      "G3": false,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": false,
+      "G3": false,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": false,
+      "G3": true,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": false,
+      "G3": true,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": true,
+      "G3": false,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": true,
+      "G3": false,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": true,
+      "G3": true,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": false,
+      "G2": true,
+      "G3": true,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": false,
+      "G3": false,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": false,
+      "G3": false,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": false,
+      "G3": true,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": false,
+      "G3": true,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": true,
+      "G3": false,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": true,
+      "G3": false,
+      "G4": true,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": true,
+      "G3": true,
+      "G4": false,
+      "expected": false,
+      "alert": false
+    },
+    {
+      "G1": true,
+      "G2": true,
+      "G3": true,
+      "G4": true,
+      "expected": true,
+      "alert": false
+    }
+  ],
+  "boundaries": {
+    "2 negatives": {
+      "expected": false,
+      "alert": false
+    },
+    "3 negatives": {
+      "expected": true,
+      "alert": false
+    },
+    "cooldown 11.9 h": {
+      "expected": false,
+      "alert": false
+    },
+    "cooldown 12.0 h": {
+      "expected": true,
+      "alert": false
+    },
+    "3 negatives, 25 h old": {
+      "expected": false,
+      "alert": false
+    }
+  },
+  "corrections": {
+    "3 model negatives, 1 corrected to neutral": {
+      "expected": false,
+      "alert": false
+    },
+    "3 model negatives, none corrected": {
+      "expected": true,
+      "alert": false
+    }
+  },
+  "failures": {
+    "smtp_failure": {
+      "returned": false,
+      "cooldown_started": false,
+      "expected": "False, no cooldown"
+    },
+    "db_exception": {
+      "returned": false,
+      "raised": false,
+      "expected": "False, no raise"
+    }
+  },
+  "privacy": {
+    "email_sent": false,
+    "entry_text_in_email": false,
+    "email_body": ""
+  },
+  "fig5_replay": {
+    "neg_events_h": [
+      2,
+      5,
+      9,
+      14,
+      15,
+      16,
+      21,
+      31,
+      40,
+      41,
+      42
+    ],
+    "flags_h": [
+      15,
+      21,
+      41
+    ],
+    "alerts_h": [],
+    "suppressed_h": [
+      15,
+      21,
+      41
+    ]
+  },
+  "summary": {
+    "truth_table": "15/16",
+    "other_checks": "6/10"
+  }
+}

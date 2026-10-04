@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { askForSuggestion } from '../api'
 import type { Entry, Message } from '../api'
+import CrisisCard from './CrisisCard'
 import EntryCard from './EntryCard'
+import { isUnsure } from '../confidence'
+
+export type SupportTab = 'counsellors' | 'friends'
 
 interface ConversationProps {
   messages: Message[]
@@ -9,6 +13,7 @@ interface ConversationProps {
   busy?: boolean
   onUpdated: (entry: Entry) => void
   onSuggestion: (message: Message) => void
+  onOpenTab: (tab: SupportTab) => void
 }
 
 /** Cards extracted from one user turn, shown folded under that turn. */
@@ -19,12 +24,17 @@ function TurnDetail({
   entries: Entry[]
   onUpdated: (entry: Entry) => void
 }) {
-  const [open, setOpen] = useState(false)
+  // Open by default when the model was unsure about something, so the user
+  // sees the question without having to go looking for it.
+  const toCheck = entries.filter(isUnsure).length
+  const [open, setOpen] = useState(toCheck > 0)
   if (entries.length === 0) return null
   return (
     <div className="turn-detail">
       <button type="button" className="link" onClick={() => setOpen((v) => !v)}>
-        {open ? 'Hide' : `What I picked up (${entries.length})`}
+        {open
+          ? 'Hide'
+          : `What I picked up (${entries.length})${toCheck ? ` · ${toCheck} to check` : ''}`}
       </button>
       {open && (
         <ul className="entry-list">
@@ -84,6 +94,7 @@ export default function Conversation({
   busy = false,
   onUpdated,
   onSuggestion,
+  onOpenTab,
 }: ConversationProps) {
   if (busy && messages.length === 0) return <p className="muted">Loading…</p>
   if (messages.length === 0) {
@@ -107,10 +118,21 @@ export default function Conversation({
             className={`turn turn-assistant${message.kind === 'suggestion' ? ' suggestion' : ''}`}
           >
             <p className="turn-text">{message.content}</p>
-            {message.needs_support && (
-              <p className="support-nudge">
-                Sounds heavy. Talking to someone might help — counselling is coming soon.
-              </p>
+            {message.crisis ? (
+              <CrisisCard
+                onOpenCounsellors={() => onOpenTab('counsellors')}
+                onOpenFriends={() => onOpenTab('friends')}
+              />
+            ) : (
+              message.needs_support && (
+                <p className="support-nudge">
+                  Sounds heavy. Talking to someone might help —{' '}
+                  <button type="button" className="link" onClick={() => onOpenTab('counsellors')}>
+                    see counsellors
+                  </button>
+                  .
+                </p>
+              )
             )}
           </li>
         ),

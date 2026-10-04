@@ -1,0 +1,237 @@
+{
+  "sample_size": 500,
+  "models": {
+    "HealAura (Sarvam-105B, few-shot)": {
+      "n": 500,
+      "accuracy": 0.492,
+      "macro_f1": 0.34168341586343576,
+      "weighted_f1": 0.5249091678206609,
+      "per_class": {
+        "positive": {
+          "precision": 0.7481203007518797,
+          "recall": 0.6067073170731707,
+          "f1": 0.67003367003367,
+          "support": 328
+        },
+        "negative": {
+          "precision": 0.3333333333333333,
+          "recall": 0.3150684931506849,
+          "f1": 0.323943661971831,
+          "support": 73
+        },
+        "mixed": {
+          "precision": 0.3125,
+          "recall": 0.15151515151515152,
+          "f1": 0.20408163265306123,
+          "support": 66
+        },
+        "neutral": {
+          "precision": 0.10526315789473684,
+          "recall": 0.42424242424242425,
+          "f1": 0.1686746987951807,
+          "support": 33
+        }
+      },
+      "macro_f1_ci95": [
+        0.2974347198390688,
+        0.3874280789658696
+      ],
+      "api_errors_after_retries": 0,
+      "fallback_rate": 0.0,
+      "latency_s": {
+        "median": 2.1665,
+        "p95": 4.241049999999996,
+        "mean": 2.4501420000000005
+      },
+      "segments_per_comment": {
+        "mean": 1.496,
+        "multi_segment_share": 0.386
+      },
+      "segment_types": {
+        "memory": 623,
+        "event": 39,
+        "task": 86
+      }
+    },
+    "Sarvam-105B zero-shot": {
+      "n": 500,
+      "accuracy": 0.492,
+      "macro_f1": 0.34075064902734803,
+      "weighted_f1": 0.522112399962497,
+      "per_class": {
+        "positive": {
+          "precision": 0.7316176470588235,
+          "recall": 0.6067073170731707,
+          "f1": 0.6633333333333333,
+          "support": 328
+        },
+        "negative": {
+          "precision": 0.35714285714285715,
+          "recall": 0.3424657534246575,
+          "f1": 0.34965034965034963,
+          "support": 73
+        },
+        "mixed": {
+          "precision": 0.2702702702702703,
+          "recall": 0.15151515151515152,
+          "f1": 0.1941747572815534,
+          "support": 66
+        },
+        "neutral": {
+          "precision": 0.09917355371900827,
+          "recall": 0.36363636363636365,
+          "f1": 0.15584415584415584,
+          "support": 33
+        }
+      },
+      "macro_f1_ci95": [
+        0.29654779857701913,
+        0.38669982929130997
+      ],
+      "api_errors_after_retries": 0,
+      "fallback_rate": 0.0,
+      "latency_s": {
+        "median": 2.6215,
+        "p95": 4.3124,
+        "mean": 2.6959139999999997
+      },
+      "segments_per_comment": {
+        "mean": 1.554,
+        "multi_segment_share": 0.452
+      },
+      "segment_types": {
+        "memory": 615,
+        "event": 55,
+        "task": 107
+      }
+    },
+    "TF-IDF + LR": {
+      "n": 500,
+      "accuracy": 0.562,
+      "macro_f1": 0.41659108674294354,
+      "weighted_f1": 0.5784574893707444,
+      "per_class": {
+        "positive": {
+          "precision": 0.7716262975778547,
+          "recall": 0.6798780487804879,
+          "f1": 0.7228525121555915,
+          "support": 328
+        },
+        "negative": {
+          "precision": 0.3068181818181818,
+          "recall": 0.3698630136986301,
+          "f1": 0.33540372670807456,
+          "support": 73
+        },
+        "mixed": {
+          "precision": 0.2073170731707317,
+          "recall": 0.25757575757575757,
+          "f1": 0.22972972972972974,
+          "support": 66
+        },
+        "neutral": {
+          "precision": 0.34146341463414637,
+          "recall": 0.42424242424242425,
+          "f1": 0.3783783783783784,
+          "support": 33
+        }
+      },
+      "macro_f1_ci95": [
+        0.36097070946311893,
+        0.4676976206400838
+      ],
+      "full_test": {
+        "n": 3049,
+        "accuracy": 0.5834699901607084,
+        "macro_f1": 0.4132775903747445,
+        "weighted_f1": 0.60179459782297,
+        "per_class": {
+          "positive": {
+            "precision": 0.7985611510791367,
+            "recall": 0.6954216867469879,
+            "f1": 0.7434312210200927,
+            "support": 2075
+          },
+          "negative": {
+            "precision": 0.3314814814814815,
+            "recall": 0.4221698113207547,
+            "f1": 0.37136929460580914,
+            "support": 424
+          },
+          "mixed": {
+            "precision": 0.19248826291079812,
+            "recall": 0.21750663129973474,
+            "f1": 0.20423412204234123,
+            "support": 377
+          },
+          "neutral": {
+            "precision": 0.2717391304347826,
+            "recall": 0.43352601156069365,
+            "f1": 0.33407572383073497,
+            "support": 173
+          }
+        }
+      },
+      "meta": {
+        "C": 2,
+        "val_macro_f1": 0.42154730232363197
+      }
+    },
+    "Majority class (positive)": {
+      "n": 500,
+      "accuracy": 0.656,
+      "macro_f1": 0.19806763285024154,
+      "weighted_f1": 0.5197294685990338,
+      "per_class": {
+        "positive": {
+          "precision": 0.656,
+          "recall": 1.0,
+          "f1": 0.7922705314009661,
+          "support": 328
+        },
+        "negative": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 73
+        },
+        "mixed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 66
+        },
+        "neutral": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 33
+        }
+      }
+    }
+  },
+  "gold_distribution": {
+    "positive": 328,
+    "negative": 73,
+    "mixed": 66,
+    "neutral": 33
+  },
+  "paired_diff_vs_healaura": {
+    "Sarvam-105B zero-shot": {
+      "mean": -0.002042533461709489,
+      "ci95": [
+        -0.04088723332300624,
+        0.03509419896045026
+      ],
+      "p_le_0": 0.542
+    },
+    "TF-IDF + LR": {
+      "mean": 0.07284642114584008,
+      "ci95": [
+        0.010541131835983942,
+        0.13927412468365677
+      ],
+      "p_le_0": 0.0125
+    }
+  }
+}

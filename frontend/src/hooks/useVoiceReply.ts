@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { speak } from '../api'
-import type { Message } from '../api'
+import { getVoices, speak } from '../api'
+import type { Message, VoiceOption } from '../api'
 
 const STORAGE_KEY = 'healaura:voice-reply'
+const VOICE_KEY = 'healaura:voice'
+
+const DEFAULT_VOICE = 'ishita'
+
+function readVoice(): string {
+  try {
+    return localStorage.getItem(VOICE_KEY) || DEFAULT_VOICE
+  } catch {
+    return DEFAULT_VOICE
+  }
+}
 
 function readPreference(): boolean {
   try {
@@ -16,6 +27,18 @@ function readPreference(): boolean {
 /** Speaks assistant replies aloud, when the user has asked for that. */
 export function useVoiceReply() {
   const [enabled, setEnabled] = useState(readPreference)
+  const [voice, setVoiceState] = useState(readVoice)
+  // The server owns the voice list and knows which engines are usable.
+  const [voices, setVoices] = useState<VoiceOption[]>([])
+
+  useEffect(() => {
+    if (!enabled || voices.length) return
+    getVoices()
+      .then(setVoices)
+      .catch(() => {
+        /* picker just stays empty; replies still use the server default */
+      })
+  }, [enabled, voices.length])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const urlRef = useRef<string | null>(null)
 
@@ -43,12 +66,23 @@ export function useVoiceReply() {
     })
   }, [cleanup])
 
+  const setVoice = useCallback((id: string) => {
+    setVoiceState(id)
+    try {
+      localStorage.setItem(VOICE_KEY, id)
+    } catch {
+      /* preference just won't persist */
+    }
+  }, [])
+
   const play = useCallback(
     async (message: Message) => {
       if (!enabled) return
       try {
         cleanup()
-        const url = await speak(message.content, message.language_code)
+        // Heavier moments get a softer delivery.
+        const tone = message.needs_support || message.crisis ? 'gentle' : 'warm'
+        const url = await speak(message.content, message.language_code, { voice, tone })
         urlRef.current = url
         const audio = new Audio(url)
         audioRef.current = audio
@@ -58,8 +92,8 @@ export function useVoiceReply() {
         // rather than interrupting with an error.
       }
     },
-    [cleanup, enabled],
+    [cleanup, enabled, voice],
   )
 
-  return { enabled, toggle, play }
+  return { enabled, toggle, play, voice, setVoice, voices }
 }

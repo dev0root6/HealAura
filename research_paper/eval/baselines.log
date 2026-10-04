@@ -1,0 +1,31 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+train=10967 val=1231 test=3049
+TF-IDF + LR
+  TF-IDF LR C=0.5: val macro-F1=0.4150
+  TF-IDF LR C=1: val macro-F1=0.4129
+  TF-IDF LR C=2: val macro-F1=0.4215
+  TF-IDF LR C=4: val macro-F1=0.4054
+  TF-IDF LR C=8: val macro-F1=0.4064
+  selected C=2
+mBERT
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights:  29%|██▉       | 58/199 [00:00<00:00, 550.85it/s]Loading weights:  57%|█████▋    | 114/199 [00:00<00:00, 511.27it/s]Loading weights:  83%|████████▎ | 166/199 [00:00<00:00, 499.41it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 521.52it/s]
+[transformers] [1mBertForSequenceClassification LOAD REPORT[0m from: bert-base-multilingual-cased
+Key                                        | Status     | 
+-------------------------------------------+------------+-
+cls.predictions.transform.dense.weight     | UNEXPECTED | 
+cls.predictions.bias                       | UNEXPECTED | 
+cls.seq_relationship.bias                  | UNEXPECTED | 
+cls.seq_relationship.weight                | UNEXPECTED | 
+cls.predictions.transform.dense.bias       | UNEXPECTED | 
+cls.predictions.transform.LayerNorm.bias   | UNEXPECTED | 
+cls.predictions.transform.LayerNorm.weight | UNEXPECTED | 
+classifier.bias                            | MISSING    | 
+classifier.weight                          | MISSING    | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING:	those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  mBERT ep0 step 0/343 loss=1.374 (25s)
+  mBERT ep0 step 50/343 loss=0.656 (760s)
+/home/dev0root/miniconda3/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-68072-4g3eyipi'}
+  warnings.warn(

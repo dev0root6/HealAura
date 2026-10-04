@@ -20,7 +20,7 @@ STT_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v3")
 # form classify.py's prompt and few-shot examples are written against.
 STT_MODE = os.getenv("SARVAM_STT_MODE", "codemix")
 TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
-TTS_SPEAKER = os.getenv("SARVAM_TTS_SPEAKER", "ritu")
+TTS_SPEAKER = os.getenv("SARVAM_TTS_SPEAKER", "ishita")
 TTS_LANGUAGES = {
     "bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN",
     "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN",
@@ -132,6 +132,10 @@ async def transcribe(
     language_code: str = "unknown",
 ) -> tuple[str, Optional[str]]:
     """Transcribe recorded audio. Returns (transcript, detected_language_code)."""
+    # Sarvam matches the full Content-Type against an allow-list, so a browser
+    # value like "audio/webm;codecs=opus" is rejected even though "audio/webm"
+    # is allowed. Drop any parameters and keep just the media type.
+    content_type = content_type.split(";", 1)[0].strip() or "audio/webm"
     data = {"model": STT_MODEL, "language_code": language_code}
     if STT_MODEL.startswith("saaras:v3"):
         # `mode` is only accepted by v3; v4 rejects it.
@@ -156,15 +160,23 @@ async def transcribe(
     return transcript.strip(), detected if isinstance(detected, str) else None
 
 
-async def synthesize(text: str, *, language_code: Optional[str] = None) -> bytes:
+async def synthesize(
+    text: str,
+    *,
+    language_code: Optional[str] = None,
+    speaker: Optional[str] = None,
+    pace: Optional[float] = None,
+) -> bytes:
     """Render text as speech, returning raw audio bytes (WAV)."""
     language = language_code if language_code in TTS_LANGUAGES else DEFAULT_TTS_LANGUAGE
     payload = {
         "text": text[:_TTS_MAX_CHARS],
         "language_code": language,
         "model": TTS_MODEL,
-        "speaker": TTS_SPEAKER,
+        "speaker": speaker or TTS_SPEAKER,
     }
+    if pace is not None:
+        payload["pace"] = pace
 
     try:
         resp = await get_speech_client().post(

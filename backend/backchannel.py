@@ -33,18 +33,26 @@ Also judge whether the user sounds like they are struggling enough that a
 human should check in — sustained distress, hopelessness, self-harm, or an
 explicit request for help. Ordinary bad days are NOT this.
 
+Separately, set "crisis" to true ONLY if the user mentions wanting to die,
+suicide, ending their life, or hurting themselves, in any language. Sadness,
+stress, or hopelessness without that is NOT a crisis. A crisis always also
+needs support.
+
 Respond ONLY with JSON, no markdown fences:
-{"reply": "...", "needs_support": true|false}
+{"reply": "...", "needs_support": true|false, "crisis": true|false}
 
 Examples:
 Input: "naan inaiki biryani sapten, athu suvaiaa irundhichu"
-Output: {"reply": "aha, nalla iruku", "needs_support": false}
+Output: {"reply": "aha, nalla iruku", "needs_support": false, "crisis": false}
 
 Input: "presentation went badly today, felt stupid the whole time"
-Output: {"reply": "hmm. that sucks", "needs_support": false}
+Output: {"reply": "hmm. that sucks", "needs_support": false, "crisis": false}
 
 Input: "i don't see the point anymore, nothing is getting better"
-Output: {"reply": "i'm here. keep talking", "needs_support": true}"""
+Output: {"reply": "i'm here. keep talking", "needs_support": true, "crisis": false}
+
+Input: "enakku saaganum pola iruku, ellam mudinjiduchu"
+Output: {"reply": "naan inga irukken. please stay", "needs_support": true, "crisis": true}"""
 
 SUGGEST_PROMPT = """You are a calm, practical companion in a journaling app.
 The user has explicitly asked you for a suggestion about what they wrote.
@@ -67,7 +75,7 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$")
 _MAX_REPLY_CHARS = 120
 
 
-def _parse(content: str) -> Optional[tuple[str, bool]]:
+def _parse(content: str) -> Optional[tuple[str, bool, bool]]:
     text = _FENCE_RE.sub("", content.strip())
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
@@ -79,11 +87,15 @@ def _parse(content: str) -> Optional[tuple[str, bool]]:
     reply = data.get("reply")
     if not isinstance(reply, str) or not reply.strip():
         return None
-    return reply.strip()[:_MAX_REPLY_CHARS], bool(data.get("needs_support"))
+    crisis = data.get("crisis") is True
+    return reply.strip()[:_MAX_REPLY_CHARS], bool(data.get("needs_support")) or crisis, crisis
 
 
-async def respond(raw_text: str) -> tuple[str, bool]:
-    """Return (reply, needs_support) for one entry.
+async def respond(raw_text: str) -> tuple[str, bool, bool]:
+    """Return (reply, needs_support, crisis) for one entry.
+
+    `crisis` here is only the model's judgement; callers combine it with the
+    phrase safety net in safety.py, which also covers the fallback paths below.
 
     Never raises: a failed backchannel must not fail the entry it belongs to.
     """
@@ -93,12 +105,12 @@ async def respond(raw_text: str) -> tuple[str, bool]:
         )
     except RuntimeError as exc:
         logger.warning("Backchannel call failed: %s", exc)
-        return random.choice(FALLBACK_REPLIES), False
+        return random.choice(FALLBACK_REPLIES), False, False
 
     parsed = _parse(content or "")
     if parsed is None:
         logger.warning("Unparseable backchannel response: %r", (content or "")[:200])
-        return random.choice(FALLBACK_REPLIES), False
+        return random.choice(FALLBACK_REPLIES), False, False
     return parsed
 
 

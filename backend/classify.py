@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import os
 import re
 from datetime import date, datetime, timedelta, time as _time_parse
 from typing import Any, Optional
@@ -193,3 +195,85 @@ def _fallback_segment(raw_text: str) -> Segment:
         type="memory",
         sentiment="neutral",
     )
+
+# --- confidence by self-consistency ----------------------------------------
+#
+# The model gives no usable probability, so confidence is estimated by asking
+# again: CONFIDENCE_SAMPLES extra classifications run at a higher temperature,
+# concurrently with the main one. A segment's confidence is the share of runs
+# (main + successful extra samples) that gave its best-matching segment the
+# same type and sentiment. Low-confidence segments are the ones worth asking
+# the user about — the active-learning query step.
+
+CONFIDENCE_SAMPLES = int(os.getenv("CONFIDENCE_SAMPLES", "2"))
+_SAMPLE_TEMPERATURE = 0.7
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _words(text: str) -> set[str]:
+    return set(_WORD_RE.findall(text.lower()))
+
+
+def _best_match(segment: Segment, candidates: list[Segment]) -> Optional[Segment]:
+    """The candidate segment whose words overlap `segment` the most (Jaccard)."""
+    target = _words(segment.segment_text)
+    best, best_score = None, 0.0
+    for cand in candidates:
+        words = _words(cand.segment_text)
+        union = target | words
+        score = len(target & words) / len(union) if union else 0.0
+        if score > best_score:
+            best, best_score = cand, score
+    return best
+
+
+def score_confidence(primary: list[Segment], samples: list[list[Segment]]) -> list[Segment]:
+    """Return `primary` with ai_confidence filled from agreement with `samples`.
+
+    With no samples there is nothing to compare against, so confidence stays None.
+    """
+    if not samples:
+        return primary
+    scored = []
+    for seg in primary:
+        agree = 1  # the primary run agrees with itself
+        for sample in samples:
+            match = _best_match(seg, sample)
+            if match and match.type == seg.type and match.sentiment == seg.sentiment:
+                agree += 1
+        scored.append(seg.model_copy(update={"ai_confidence": round(agree / (1 + len(samples)), 3)}))
+    return scored
+
+
+async def _sample_once(raw_text: str) -> Optional[list[Segment]]:
+    """One extra, higher-temperature classification. Any failure yields None."""
+    try:
+        content = await sarvam_client.chat_completion(
+            FULL_SYSTEM_PROMPT, raw_text, temperature=_SAMPLE_TEMPERATURE
+        )
+        segments = parse_segments(content or "")
+        return segments or None
+    except (RuntimeError, ValueError):
+        return None
+
+
+async def classify_with_confidence(raw_text: str) -> tuple[list[Segment], bool]:
+    """classify_entry plus a self-consistency confidence on each segment.
+
+    Extra samples never fail the entry: if they error out, the segments are
+    returned without a confidence, exactly as classify_entry would.
+    """
+    if CONFIDENCE_SAMPLES <= 0:
+        return await classify_entry(raw_text)
+    primary, *extra = await asyncio.gather(
+        classify_entry(raw_text),
+        *(_sample_once(raw_text) for _ in range(CONFIDENCE_SAMPLES)),
+        return_exceptions=True,
+    )
+    if isinstance(primary, BaseException):
+        raise primary
+    segments, used_fallback = primary
+    if used_fallback:
+        return segments, used_fallback
+    samples = [s for s in extra if isinstance(s, list)]
+    return score_confidence(segments, samples), used_fallback

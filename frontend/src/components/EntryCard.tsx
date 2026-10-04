@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { CalendarDays, Check, User } from 'lucide-react'
 import { correctEntry } from '../api'
 import type { Entry } from '../api'
+import { isUnsure } from '../confidence'
 
 interface EntryCardProps {
   entry: Entry
@@ -30,6 +32,7 @@ export default function EntryCard({ entry, onUpdated }: EntryCardProps) {
 
   const type = entry.corrected_type ?? entry.entry_type
   const sentiment = entry.corrected_sentiment ?? entry.sentiment
+  const unsure = isUnsure(entry)
 
   async function apply(correction: { corrected_type?: string; corrected_sentiment?: string }) {
     if (busy) return
@@ -46,24 +49,25 @@ export default function EntryCard({ entry, onUpdated }: EntryCardProps) {
   }
 
   return (
-    <li className={`entry-card${entry.user_confirmed ? ' confirmed' : ''}`}>
+    <li className={`entry-card${entry.user_confirmed ? ' confirmed' : ''}${unsure ? ' unsure' : ''}`}>
+      {unsure && <p className="unsure-prompt">I'm not sure I read this one right — is it?</p>}
       <p className="segment-text">{entry.segment_text}</p>
       <div className="tags">
         <span className={`tag type-${type}`}>{TYPE_LABELS[type] ?? type}</span>
         <span className={`tag sentiment-${sentiment}`}>
           {SENTIMENT_LABELS[sentiment] ?? sentiment}
         </span>
-        {entry.person && <span className="tag person">👤 {entry.person}</span>}
+        {entry.person && <span className="tag person"><User size={13} aria-hidden="true" /> {entry.person}</span>}
         {entry.event_date && (
           <span className="tag date">
-            📅 {entry.event_date}
+            <CalendarDays size={13} aria-hidden="true" /> {entry.event_date}
             {entry.event_time ? ` ${entry.event_time}` : ''}
           </span>
         )}
         {entry.is_fallback && (
           <span className="tag unclassified">Unclassified — please review</span>
         )}
-        {entry.user_confirmed === 1 && <span className="tag confirmed-tag">✓ Confirmed</span>}
+        {entry.user_confirmed === 1 && <span className="tag confirmed-tag"><Check size={13} aria-hidden="true" /> Confirmed</span>}
       </div>
 
       {editing ? (

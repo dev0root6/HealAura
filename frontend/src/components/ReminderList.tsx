@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { User } from 'lucide-react'
 import { getEvents } from '../api'
 import type { Entry } from '../api'
 
@@ -46,7 +47,7 @@ export default function ReminderList({ refreshKey = 0 }: ReminderListProps) {
         <li key={event.id} className="reminder-card">
           <span className="reminder-when">{formatWhen(event)}</span>
           <span className="reminder-text">{event.segment_text}</span>
-          {event.person && <span className="tag person">👤 {event.person}</span>}
+          {event.person && <span className="tag person"><User size={13} aria-hidden="true" /> {event.person}</span>}
         </li>
       ))}
     </ul>

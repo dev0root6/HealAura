@@ -1,3 +1,4 @@
+import { Mic, Square } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { submitAudio } from '../api'
@@ -72,7 +73,15 @@ export default function EntryInput({ onSubmit, onSubmitted }: EntryInputProps) {
             aria-label={recorder.recording ? 'Stop recording' : 'Record your entry'}
             aria-pressed={recorder.recording}
           >
-            {recorder.recording ? '■ Stop' : '🎙 Talk'}
+            {recorder.recording ? (
+              <>
+                <Square size={14} aria-hidden="true" /> Stop
+              </>
+            ) : (
+              <>
+                <Mic size={16} aria-hidden="true" /> Talk
+              </>
+            )}
           </button>
         )}
         <button type="submit" disabled={busy || recorder.recording || !text.trim()}>
