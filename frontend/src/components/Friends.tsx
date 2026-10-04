@@ -1,8 +1,18 @@
-import { ShieldCheck } from 'lucide-react'
+import { MailCheck, Send, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { addFriend, deleteFriend, listFriends } from '../api'
-import type { Friend } from '../api'
+import { addFriend, deleteFriend, getAlertStatus, listFriends, sendTestAlert } from '../api'
+import type { AlertStatus, Friend } from '../api'
+
+const REASON_LABEL: Record<string, string> = {
+  crisis: 'Urgent check-in',
+  sustained: 'Check-in',
+  test: 'Test email',
+}
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
 
 export default function Friends() {
   const [friends, setFriends] = useState<Friend[]>([])
@@ -10,10 +20,14 @@ export default function Friends() {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<AlertStatus | null>(null)
+  const [testMsg, setTestMsg] = useState<string | null>(null)
 
   async function load() {
     try {
-      setFriends(await listFriends())
+      const [list, alerts] = await Promise.all([listFriends(), getAlertStatus()])
+      setFriends(list)
+      setStatus(alerts)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -49,6 +63,27 @@ export default function Friends() {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
+
+  async function handleTest() {
+    if (busy) return
+    setBusy(true)
+    setTestMsg(null)
+    setError(null)
+    try {
+      await sendTestAlert()
+      setTestMsg('Test sent. Ask your friends to check their inbox (and spam).')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cooling =
+    status?.next_allowed_at && new Date(status.next_allowed_at).getTime() > Date.now()
+      ? status.next_allowed_at
+      : null
 
   return (
     <div className="stack">
@@ -107,6 +142,51 @@ export default function Friends() {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="glass panel">
+        <h2>Check-in emails</h2>
+        {status && !status.email_configured && (
+          <p className="notice">Email isn't set up on the server yet, so no check-ins can be sent.</p>
+        )}
+        <p className="muted small">
+          HealAura emails your friends (and you, with helplines) when it senses a sustained rough
+          patch, or straight away for a crisis. After one goes out, it waits{' '}
+          {status?.cooldown_hours ?? 12} hours before sending another.
+          {cooling && <> Next one possible after {when(cooling)}.</>}
+        </p>
+        <div className="test-row">
+          <button
+            type="button"
+            className="ghost"
+            onClick={handleTest}
+            disabled={busy || friends.length === 0}
+          >
+            <Send size={15} aria-hidden="true" /> Send a test email to my friends
+          </button>
+          {testMsg && (
+            <span className="ok small">
+              <MailCheck size={15} aria-hidden="true" className="inline-icon" /> {testMsg}
+            </span>
+          )}
+        </div>
+        {status && status.alerts.length > 0 ? (
+          <ul className="alert-list">
+            {status.alerts.map((a) => (
+              <li key={a.created_at}>
+                <strong>{REASON_LABEL[a.reason] ?? a.reason}</strong>
+                <span className="muted small">{when(a.created_at)}</span>
+                <span className="small">
+                  {a.friends_sent} friend{a.friends_sent === 1 ? '' : 's'} emailed
+                  {a.friends_failed > 0 && <span className="error"> · {a.friends_failed} failed</span>}
+                  {a.self_sent && ' · you too'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">No check-ins sent yet.</p>
+        )}
       </div>
     </div>
   )

@@ -2,11 +2,11 @@ import asyncio
 import logging
 
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 
 import agent
 import auth
@@ -43,16 +43,24 @@ router = APIRouter(prefix="/entries", tags=["entries"])
 async def create_entries(
     payload: EntryRequest, user: UserOut = Depends(auth.get_current_user)
 ) -> EntryResponse:
-    """Store one entry and answer it with a short acknowledgement.
+    """Store one entry and answer it: a short acknowledgement, or a real reply in "long" mode.
 
-    Classification and the backchannel reply are independent, so they run
-    concurrently — the user waits for one round trip, not two.
+    Classification and the reply are independent, so they run concurrently —
+    the user waits for one round trip, not two.
     """
-    return await _record_entry(user, payload.raw_text)
+    return await _record_entry(user, payload.raw_text, mode=payload.mode)
+
+
+async def _reply(user: UserOut, raw_text: str, mode: str) -> tuple[str, bool, bool]:
+    if mode == "long":
+        # Earlier turns are read before this entry is stored, so they exclude it.
+        history = await db.recent_conversation(user.id)
+        return await backchannel.converse(raw_text, history, user.language, user.preferred_name)
+    return await backchannel.respond(raw_text, user.language)
 
 
 async def _record_entry(
-    user: UserOut, text: str, *, language_code: Optional[str] = None
+    user: UserOut, text: str, *, language_code: Optional[str] = None, mode: str = "short"
 ) -> EntryResponse:
     """Shared path for typed and spoken entries."""
     raw_text = text.strip()
@@ -61,7 +69,7 @@ async def _record_entry(
 
     classified, answered = await asyncio.gather(
         classify.classify_with_confidence(raw_text),
-        backchannel.respond(raw_text),
+        _reply(user, raw_text, mode),
         return_exceptions=True,
     )
     if isinstance(classified, BaseException):
@@ -152,7 +160,7 @@ async def ask_for_suggestion(
     if not raw_text:
         raise HTTPException(status_code=400, detail="raw_text cannot be empty")
     try:
-        advice = await backchannel.suggest(raw_text)
+        advice = await backchannel.suggest(raw_text, user.language)
     except RuntimeError as exc:
         logger.warning("Sarvam suggestion failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -163,7 +171,9 @@ async def ask_for_suggestion(
 
 @router.post("/audio", response_model=AudioEntryResponse)
 async def create_entry_from_audio(
-    file: UploadFile = File(...), user: UserOut = Depends(auth.get_current_user)
+    file: UploadFile = File(...),
+    mode: Literal["short", "long"] = Form("short"),
+    user: UserOut = Depends(auth.get_current_user),
 ) -> AudioEntryResponse:
     """Transcribe a spoken entry and run it through the normal entry path.
 
@@ -191,7 +201,7 @@ async def create_entry_from_audio(
             status_code=422, detail="Could not make out any speech in that recording"
         )
 
-    recorded = await _record_entry(user, transcript, language_code=detected_language)
+    recorded = await _record_entry(user, transcript, language_code=detected_language, mode=mode)
     return AudioEntryResponse(
         entries=recorded.entries, reply=recorded.reply, transcript=transcript
     )

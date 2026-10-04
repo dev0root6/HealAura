@@ -75,9 +75,14 @@ export function useVoiceReply() {
     }
   }, [])
 
+  /**
+   * Speak a reply. Resolves when playback has finished (or failed), so live
+   * voice mode knows when it can listen again. `force` speaks even when the
+   * voice toggle is off (live mode is a spoken conversation by definition).
+   */
   const play = useCallback(
-    async (message: Message) => {
-      if (!enabled) return
+    async (message: Message, options: { force?: boolean } = {}) => {
+      if (!enabled && !options.force) return
       try {
         cleanup()
         // Heavier moments get a softer delivery.
@@ -86,7 +91,12 @@ export function useVoiceReply() {
         urlRef.current = url
         const audio = new Audio(url)
         audioRef.current = audio
-        await audio.play()
+        await new Promise<void>((resolve) => {
+          audio.onended = () => resolve()
+          audio.onerror = () => resolve()
+          audio.onpause = () => resolve()
+          audio.play().catch(() => resolve())
+        })
       } catch {
         // A reply that cannot be spoken is still on screen — stay silent
         // rather than interrupting with an error.

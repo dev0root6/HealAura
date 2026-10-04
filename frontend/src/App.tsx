@@ -72,7 +72,7 @@ export default function App() {
 
   let content
   if (view === 'app' && user) {
-    content = <AppShell user={user} onLogout={handleLogout} />
+    content = <AppShell user={user} onLogout={handleLogout} onUserChange={setUser} />
   } else if (view === 'login') {
     content = (
       <Login

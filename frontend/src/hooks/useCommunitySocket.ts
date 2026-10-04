@@ -6,6 +6,8 @@ export interface CommunityEvents {
   onMessage: (message: CommunityMessage) => void
   onChannel: (channel: Channel) => void
   onTyping: (handle: string, channelId: string) => void
+  /** Someone @mentioned this person. */
+  onMention: (info: { channelId: string; channelName: string; from: string; message: CommunityMessage }) => void
 }
 
 export type LiveStatus = 'connecting' | 'live' | 'offline'
@@ -18,7 +20,8 @@ export function useCommunitySocket(viewingChannel: string | null, events: Commun
   const [status, setStatus] = useState<LiveStatus>('connecting')
   const [online, setOnline] = useState(0)
   const [perChannel, setPerChannel] = useState<Record<string, number>>({})
-  const [handle, setHandle] = useState<string | null>(null)
+  // undefined until the server says hello; null means "no alias chosen yet".
+  const [handle, setHandle] = useState<string | null | undefined>(undefined)
   const wsRef = useRef<WebSocket | null>(null)
   const eventsRef = useRef(events)
   const viewingRef = useRef(viewingChannel)
@@ -48,7 +51,7 @@ export function useCommunitySocket(viewingChannel: string | null, events: Commun
         }
         switch (ev.type) {
           case 'hello':
-            setHandle(ev.handle as string)
+            setHandle((ev.handle as string | null) ?? null)
             setStatus('live')
             break
           case 'message':
@@ -59,6 +62,14 @@ export function useCommunitySocket(viewingChannel: string | null, events: Commun
             break
           case 'typing':
             eventsRef.current.onTyping(ev.handle as string, ev.channel_id as string)
+            break
+          case 'mention':
+            eventsRef.current.onMention({
+              channelId: ev.channel_id as string,
+              channelName: ev.channel_name as string,
+              from: ev.from as string,
+              message: ev.message as CommunityMessage,
+            })
             break
           case 'presence':
             setOnline(ev.online as number)
@@ -100,5 +111,5 @@ export function useCommunitySocket(viewingChannel: string | null, events: Commun
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'typing' }))
   }, [])
 
-  return { status, online, perChannel, handle, sendTyping }
+  return { status, online, perChannel, handle, setHandle, sendTyping }
 }

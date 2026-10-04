@@ -86,10 +86,13 @@ export interface AudioEntryResponse extends EntryResponse {
   transcript: string
 }
 
-export async function submitEntry(rawText: string): Promise<EntryResponse> {
+/** "short": a few-word listening reply. "long": a real conversation with follow-up questions. */
+export type ChatMode = 'short' | 'long'
+
+export async function submitEntry(rawText: string, mode: ChatMode = 'short'): Promise<EntryResponse> {
   return request<EntryResponse>(`${BASE}/entries`, {
     method: 'POST',
-    body: JSON.stringify({ raw_text: rawText }),
+    body: JSON.stringify({ raw_text: rawText, mode }),
   })
 }
 
@@ -143,12 +146,13 @@ export async function getEvents(): Promise<Entry[]> {
   return request<Entry[]>(`${BASE}/events`)
 }
 
-export async function submitAudio(blob: Blob): Promise<AudioEntryResponse> {
+export async function submitAudio(blob: Blob, mode: ChatMode = 'short'): Promise<AudioEntryResponse> {
   const form = new FormData()
   // The extension matters to the API's format sniffing, so keep it in step
   // with whatever MIME type MediaRecorder actually gave us.
   const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'mp4' : 'webm'
   form.append('file', blob, `entry.${ext}`)
+  form.append('mode', mode)
 
   const resp = await fetch(`${BASE}/entries/audio`, {
     method: 'POST',
@@ -174,6 +178,41 @@ export interface User {
   username: string
   email: string | null
   created_at: string
+  preferred_name: string | null
+  language: string | null
+  interests: string[]
+  onboarded_at: string | null
+  /** Has a verified email, a language, and has been through profile setup. */
+  setup_complete: boolean
+}
+
+export interface Language {
+  code: string
+  label: string
+}
+
+export async function getLanguages(): Promise<Language[]> {
+  return request<Language[]>(`${BASE}/auth/languages`)
+}
+
+export async function updateProfile(profile: {
+  preferred_name: string | null
+  language: string
+  interests: string[]
+}): Promise<User> {
+  return request<User>(`${BASE}/auth/profile`, { method: 'PUT', body: JSON.stringify(profile) })
+}
+
+/** Existing accounts: send a code to the email they want to add. */
+export async function startAddEmail(email: string): Promise<{ delivery: 'email' | 'log' }> {
+  return request(`${BASE}/auth/email/start`, { method: 'POST', body: JSON.stringify({ email }) })
+}
+
+export async function verifyAddEmail(email: string, code: string): Promise<User> {
+  return request<User>(`${BASE}/auth/email/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  })
 }
 
 /** Sign in with a username or the registered email. */
@@ -252,6 +291,29 @@ export async function deleteFriend(id: string): Promise<void> {
   await request(`${BASE}/friends/${id}`, { method: 'DELETE' })
 }
 
+export interface AlertRecord {
+  reason: 'crisis' | 'sustained' | 'test'
+  friends_sent: number
+  friends_failed: number
+  self_sent: boolean
+  created_at: string
+}
+
+export interface AlertStatus {
+  email_configured: boolean
+  cooldown_hours: number
+  next_allowed_at: string | null
+  alerts: AlertRecord[]
+}
+
+export async function getAlertStatus(): Promise<AlertStatus> {
+  return request<AlertStatus>(`${BASE}/friends/alerts`)
+}
+
+export async function sendTestAlert(): Promise<void> {
+  await request(`${BASE}/friends/test-alert`, { method: 'POST' })
+}
+
 // --- counsellors ---
 export interface Counsellor {
   name: string
@@ -286,6 +348,7 @@ export interface CommunityMessage {
   /** Written by one of HealAura's AI companions; always labelled in the UI. */
   is_bot: boolean
   reply_to: string | null
+  image_id: string | null
   created_at: string
 }
 
@@ -304,15 +367,63 @@ export async function getChannelMessages(channelId: string): Promise<CommunityMe
   return request<CommunityMessage[]>(`${BASE}/community/channels/${channelId}/messages`)
 }
 
-export async function postChannelMessage(channelId: string, content: string): Promise<CommunityMessage> {
+export async function postChannelMessage(
+  channelId: string,
+  content: string,
+  imageId: string | null = null,
+): Promise<CommunityMessage> {
   return request<CommunityMessage>(`${BASE}/community/channels/${channelId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, image_id: imageId }),
   })
 }
 
-export async function getMyHandle(): Promise<string> {
-  return (await request<{ handle: string }>(`${BASE}/community/me`)).handle
+export function communityImageUrl(imageId: string): string {
+  return `${BASE}/community/images/${imageId}`
+}
+
+export async function uploadCommunityImage(file: File): Promise<{ id: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch(`${BASE}/community/images`, { method: 'POST', headers: authHeaders(), body: form })
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      detail = typeof body.detail === 'string' ? body.detail : detail
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail)
+  }
+  return resp.json()
+}
+
+// --- community alias & mentions ---
+export async function getAlias(): Promise<string | null> {
+  return (await request<{ alias: string | null }>(`${BASE}/community/alias`)).alias
+}
+
+export async function checkAlias(name: string): Promise<{ available: boolean; reason: string | null }> {
+  return request(`${BASE}/community/alias/check?name=${encodeURIComponent(name)}`)
+}
+
+export async function setAlias(alias: string): Promise<string> {
+  return (
+    await request<{ alias: string }>(`${BASE}/community/alias`, {
+      method: 'PUT',
+      body: JSON.stringify({ alias }),
+    })
+  ).alias
+}
+
+export interface Member {
+  alias: string
+  is_ai: boolean
+}
+
+export async function searchMembers(q: string): Promise<Member[]> {
+  return request<Member[]>(`${BASE}/community/members?q=${encodeURIComponent(q)}`)
 }
 
 /** URL of the live community socket on the same origin (works behind the Vite proxy and tunnels). */

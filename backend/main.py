@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,13 +12,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def _purge_community_forever() -> None:
+    """Community messages and images last 24 hours; sweep expired ones every 10 minutes."""
+    while True:
+        try:
+            messages, images = await db.purge_expired_community()
+            if messages or images:
+                logger.info("Purged %d expired community messages and %d images", messages, images)
+        except Exception:
+            logger.exception("Community purge failed")
+        await asyncio.sleep(600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     try:
         await db.init_db()
     except Exception:
         logger.exception("Database init failed")
+    purge = asyncio.create_task(_purge_community_forever())
     yield
+    purge.cancel()
     await sarvam_client.close_client()
     await groq_client.close_client()
     await db.close_pool()

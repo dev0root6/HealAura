@@ -266,3 +266,43 @@ routing in Section III-D.
   messages, unread badge, and live channel creation; desktop and 390 px mobile. Test data deleted.
 - **Note:** Neon queries take about 3 s from this machine, so first loads feel slow. Consider a
   region closer to the server, or caching the channel list.
+
+---
+
+## Round 4 (2026-10-04): alert visibility, conversation mode, live talk, community v2, profiles
+
+- **Why no friend email:** emails did go out (Dev at 13:43 UTC, pranju at 15:23 UTC). Later entries fell
+  inside the 12 h cooldown. Changes so this is visible:
+  - `well_being_alerts` history table.
+  - The Close friends tab shows past check-ins (friends emailed / failed / you), the cooldown, and
+    "Send a test email to my friends".
+  - The agent logs which gate stopped an alert.
+- **Conversation mode** (`mode: "long"`): `backchannel.converse` uses today's last 12 turns, reflects, asks
+  one follow-up question, and keeps the crisis rules. "Short" is the old back-channel. The toggle is
+  above the input and saved per browser.
+- **Replies in plain text are now accepted.** Sarvam sometimes skipped the JSON wrapper, which used to
+  give "hmm".
+- **Live talk** (`useLiveVoice`):
+  - Continuous mic with echo cancellation. Learns the room's noise level, starts a turn on voice, and
+    sends it after 2 s of silence (ignores blips under 0.45 s).
+  - The mic is paused while HealAura thinks and speaks, then resumes.
+  - Tested in Chromium with a fake mic: transcript exact, reply spoken, back to listening.
+- **Language:**
+  - Replies now follow the language the person writes in; their profile language is only the fallback.
+  - Cause of the Tamil replies: the prompts' examples are Tanglish, so ambiguous English sometimes got
+    Tanglish back.
+- **Profile setup:**
+  - Fields: preferred name, language (12 options incl. Tanglish/Hinglish), interests, and a verified
+    email for accounts without one.
+  - It opens automatically when setup is incomplete, then shows as a banner once dismissed. A Profile
+    button in the header reopens it.
+  - `send_setup_reminders.py` emails older accounts once.
+- **Community v2:**
+  - Unique **aliases**: reserved names blocked, live availability check, "already taken".
+  - **@mentions**: autocomplete, highlight, live "mention" event and badge for the person tagged.
+  - **HealAura** replaces the five personas: answers @HealAura, always answers crisis posts, and
+    sometimes greets a post in a quiet channel.
+  - **Images**: re-encoded to WebP, EXIF/GPS stripped, max 1600 px, ≤ 8 MB.
+  - **24 h expiry**: hidden from reads at once, and purged every 10 minutes.
+- **Bug I caused and fixed:** inserting the purge loop briefly put `@asynccontextmanager` on the wrong
+  function, which made the server fail to start. Fixed within minutes; your 8000 server reloaded fine.

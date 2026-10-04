@@ -1,8 +1,8 @@
 from datetime import date, datetime, time
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 VALID_TYPES = {"memory", "event", "task"}
 VALID_SENTIMENTS = {"positive", "negative", "neutral", "mixed"}
@@ -31,6 +31,9 @@ class Segment(BaseModel):
 
 class EntryRequest(BaseModel):
     raw_text: str = Field(min_length=1)
+    # "short": a few-word listening reply (default). "long": a real
+    # back-and-forth that reflects and asks a follow-up question.
+    mode: Literal["short", "long"] = "short"
 
 
 class EntryOut(BaseModel):
@@ -146,6 +149,23 @@ class RegisterCompleteRequest(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+# Languages a person can choose; codes are stored on the account.
+LANGUAGES = {
+    "en": "English",
+    "ta": "Tamil",
+    "tanglish": "Tanglish (Tamil + English)",
+    "hi": "Hindi",
+    "hinglish": "Hinglish (Hindi + English)",
+    "te": "Telugu",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "bn": "Bengali",
+    "mr": "Marathi",
+    "gu": "Gujarati",
+    "pa": "Punjabi",
+}
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -154,6 +174,48 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     is_admin: bool = False
     created_at: datetime
+    preferred_name: Optional[str] = None
+    language: Optional[str] = None
+    interests: list[str] = []
+    onboarded_at: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def setup_complete(self) -> bool:
+        """Has a verified email, a language and has been through profile setup."""
+        return bool(self.email and self.language and self.onboarded_at)
+
+
+class ProfileIn(BaseModel):
+    preferred_name: Optional[str] = Field(default=None, max_length=40)
+    language: str
+    interests: list[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("language")
+    @classmethod
+    def _check_language(cls, v: str) -> str:
+        if v not in LANGUAGES:
+            raise ValueError(f"unknown language: {v!r}")
+        return v
+
+    @field_validator("interests")
+    @classmethod
+    def _clean_interests(cls, v: list[str]) -> list[str]:
+        out = []
+        for item in v:
+            item = item.strip()[:30]
+            if item and item.lower() not in {x.lower() for x in out}:
+                out.append(item)
+        return out
+
+
+class EmailStartRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, v: str) -> str:
+        return _valid_email(v).lower()
 
 
 class LoginResponse(BaseModel):
@@ -210,7 +272,13 @@ class ChannelIn(BaseModel):
 
 
 class CommunityMessageIn(BaseModel):
-    content: str = Field(min_length=1, max_length=1000)
+    content: str = Field(default="", max_length=1000)
+    # From POST /community/images; a message needs text, an image, or both.
+    image_id: Optional[UUID] = None
+
+
+class AliasIn(BaseModel):
+    alias: str = Field(min_length=3, max_length=20)
 
 
 class CommunityMessageOut(BaseModel):
@@ -222,6 +290,7 @@ class CommunityMessageOut(BaseModel):
     channel_id: Optional[UUID] = None
     is_bot: bool = False
     reply_to: Optional[UUID] = None
+    image_id: Optional[UUID] = None
     created_at: datetime
 
 

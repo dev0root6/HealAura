@@ -4,16 +4,18 @@ import {
   Heart,
   HeartHandshake,
   LogOut,
+  UserRound,
   MessageCircleHeart,
   Users,
   Volume2,
   VolumeX,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { getEntries, getMessages, submitEntry } from '../api'
-import type { Entry, EntryResponse, Message, User } from '../api'
+import { getEntries, getMessages } from '../api'
+import type { ChatMode, Entry, EntryResponse, Message, User } from '../api'
 import Conversation from './Conversation'
 import Trends from './Trends'
+import ProfileSetup from './ProfileSetup'
 import EntryInput from './EntryInput'
 import ReminderList from './ReminderList'
 import Friends from './Friends'
@@ -24,12 +26,33 @@ import Logo from './Logo'
 
 type Tab = 'ai' | 'trends' | 'community' | 'counsellors' | 'friends'
 
+const MODE_KEY = 'healaura:chat-mode'
+
+function readMode(): ChatMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'long' ? 'long' : 'short'
+  } catch {
+    return 'short'
+  }
+}
+
 interface AppShellProps {
   user: User
   onLogout: () => void
+  onUserChange: (user: User) => void
 }
 
-export default function AppShell({ user, onLogout }: AppShellProps) {
+const SETUP_SNOOZE_KEY = 'healaura:setup-snoozed'
+
+function setupSnoozed(): boolean {
+  try {
+    return sessionStorage.getItem(SETUP_SNOOZE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export default function AppShell({ user, onLogout, onUserChange }: AppShellProps) {
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'ai', label: 'Talk with AI', icon: MessageCircleHeart },
     { id: 'trends', label: 'My trends', icon: ChartSpline },
@@ -45,6 +68,20 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [eventsKey, setEventsKey] = useState(0)
   const voice = useVoiceReply()
+  const [chatMode, setChatMode] = useState<ChatMode>(readMode)
+  // Accounts that haven't finished setup (older accounts, or skipped) are asked once per session.
+  const [profileOpen, setProfileOpen] = useState(() => !user.setup_complete && !setupSnoozed())
+
+  function closeProfile() {
+    setProfileOpen(false)
+    if (!user.setup_complete) {
+      try {
+        sessionStorage.setItem(SETUP_SNOOZE_KEY, '1')
+      } catch {
+        /* will ask again next load */
+      }
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -63,7 +100,7 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
     refresh()
   }, [refresh])
 
-  function handleSubmitted(response: EntryResponse, rawText: string) {
+  function handleSubmitted(response: EntryResponse, rawText: string, options: { live?: boolean } = {}) {
     const userTurn: Message = {
       id: response.entries[0]?.message_id ?? `local-${response.reply.id}`,
       role: 'user',
@@ -77,7 +114,17 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
     setMessages((prev) => [...prev, userTurn, response.reply])
     setEntries((prev) => [...prev, ...response.entries])
     setEventsKey((k) => k + 1)
-    voice.play(response.reply)
+    // Live talk always speaks the reply, and waits for it before listening again.
+    return voice.play(response.reply, { force: options.live })
+  }
+
+  function changeMode(next: ChatMode) {
+    setChatMode(next)
+    try {
+      localStorage.setItem(MODE_KEY, next)
+    } catch {
+      /* preference just won't persist */
+    }
   }
 
   function handleUpdated(updated: Entry) {
@@ -99,7 +146,7 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
             <Logo size={40} />
             HealAura
           </h1>
-          <p className="subtitle">Hi, {user.username} · a softer place to land</p>
+          <p className="subtitle">Hi, {user.preferred_name || user.username} · a softer place to land</p>
         </div>
         <div className="header-actions">
           {tab === 'ai' && (
@@ -143,12 +190,39 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
               )}
             </>
           )}
+          <button type="button" className="voice-toggle" onClick={() => setProfileOpen(true)}>
+            <UserRound size={16} aria-hidden="true" />
+            Profile
+          </button>
           <button type="button" className="voice-toggle" onClick={onLogout}>
             <LogOut size={16} aria-hidden="true" />
             Sign out
           </button>
         </div>
       </header>
+
+      {!user.setup_complete && !profileOpen && (
+        <div className="setup-banner glass" role="status">
+          <span>
+            <strong>Finish setting up your account:</strong> add your email, the language you speak
+            and your interests.
+          </span>
+          <button type="button" className="primary" onClick={() => setProfileOpen(true)}>
+            Set up now
+          </button>
+        </div>
+      )}
+      {profileOpen && (
+        <ProfileSetup
+          user={user}
+          onboarding={!user.setup_complete}
+          onSaved={(u) => {
+            onUserChange(u)
+            setProfileOpen(false)
+          }}
+          onClose={closeProfile}
+        />
+      )}
 
       <nav className="tabs glass" role="tablist">
         {tabs.map((t) => (
@@ -181,7 +255,28 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
                 onOpenTab={setTab}
               />
             </section>
-            <EntryInput onSubmit={submitEntry} onSubmitted={handleSubmitted} />
+            <div className="chat-options" role="radiogroup" aria-label="Reply style">
+              <span className="muted small">Replies:</span>
+              {(
+                [
+                  ['short', 'Short', 'A few words, mostly listening'],
+                  ['long', 'Conversation', 'Talks back and asks you questions'],
+                ] as const
+              ).map(([id, label, hint]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={chatMode === id}
+                  className={`chip${chatMode === id ? ' active' : ''}`}
+                  onClick={() => changeMode(id)}
+                  title={hint}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <EntryInput mode={chatMode} onSubmitted={handleSubmitted} />
             <section>
               <h2>Reminders</h2>
               <ReminderList refreshKey={eventsKey} />

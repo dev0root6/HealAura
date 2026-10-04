@@ -14,6 +14,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("NEON_DATABASE_URL")
+# Community messages and images live this long, then they are deleted.
+COMMUNITY_TTL_HOURS = 24
 _pool: Optional[asyncpg.Pool] = None
 
 SCHEMA_SQL = """
@@ -112,6 +114,18 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES community_messages (id) ON DELETE SET NULL;
 
+-- Well-being alerts that went out, so the user can see when and to whom.
+CREATE TABLE IF NOT EXISTS well_being_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,            -- 'crisis' | 'sustained' | 'test'
+    friends_sent INT NOT NULL DEFAULT 0,
+    friends_failed INT NOT NULL DEFAULT 0,
+    self_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS well_being_alerts_user_idx ON well_being_alerts (user_id, created_at);
+
 -- Channels (Discord-style). created_by is kept only for rate limits and is
 -- never returned by the API, so channels don't de-anonymise anyone.
 CREATE TABLE IF NOT EXISTS community_channels (
@@ -136,6 +150,31 @@ ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS channel_id UUID REFERENC
 UPDATE community_messages SET channel_id = (SELECT id FROM community_channels WHERE slug = 'general')
  WHERE channel_id IS NULL;
 CREATE INDEX IF NOT EXISTS community_channel_created_idx ON community_messages (channel_id, created_at);
+
+-- Profile set up after sign-up (or by existing users when prompted).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS interests TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS setup_reminder_sent_at TIMESTAMPTZ;
+
+-- Community aliases: a person's chosen public name in the community (unique,
+-- case-insensitive). Separate from the login username.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS community_alias TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_community_alias_idx
+    ON users (lower(community_alias)) WHERE community_alias IS NOT NULL;
+
+-- Images shared in the community. Re-encoded on upload (no EXIF/location),
+-- and deleted with their messages after 24 hours.
+CREATE TABLE IF NOT EXISTS community_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    data BYTEA NOT NULL,
+    mime TEXT NOT NULL,
+    width INT NOT NULL,
+    height INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS image_id UUID REFERENCES community_images (id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS entries_user_idx ON entries (user_id);
 CREATE INDEX IF NOT EXISTS messages_user_idx ON messages (user_id);
 """
@@ -325,6 +364,24 @@ async def insert_message(
     return MessageOut.model_validate(dict(row))
 
 
+async def recent_conversation(user_id: UUID, limit: int = 12) -> list[tuple[str, str]]:
+    """Today's latest (role, content) turns, oldest first, for conversation mode."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT role, content FROM (
+                SELECT role, content, created_at FROM messages
+                WHERE user_id = $1 AND created_at::date = CURRENT_DATE AND kind = 'entry'
+                ORDER BY created_at DESC LIMIT $2
+            ) recent ORDER BY created_at ASC
+            """,
+            user_id,
+            limit,
+        )
+    return [(r["role"], r["content"]) for r in rows]
+
+
 async def fetch_messages_by_date(user_id: UUID, day: date) -> list[MessageOut]:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -350,7 +407,7 @@ async def create_user(username: str, password_hash: str, email: str) -> UserOut:
             """
             INSERT INTO users (username, password_hash, email)
             VALUES ($1, $2, $3)
-            RETURNING id, username, email, is_admin, created_at
+            RETURNING id, username, email, is_admin, created_at, preferred_name, language, interests, onboarded_at
             """,
             username,
             password_hash,
@@ -458,7 +515,8 @@ async def fetch_user_by_token(token: str) -> Optional[UserOut]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT u.id, u.username, u.email, u.is_admin, u.created_at
+            SELECT u.id, u.username, u.email, u.is_admin, u.created_at,
+                   u.preferred_name, u.language, u.interests, u.onboarded_at
             FROM sessions s JOIN users u ON u.id = s.user_id
             WHERE s.token = $1
             """,
@@ -538,6 +596,40 @@ async def count_recent_negative(user_id: UUID, hours: int = 24) -> tuple[int, in
     return int(row["negatives"]), int(row["total"])
 
 
+async def record_alert(
+    user_id: UUID, reason: str, friends_sent: int, friends_failed: int, self_sent: bool
+) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO well_being_alerts (user_id, reason, friends_sent, friends_failed, self_sent)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            user_id, reason, friends_sent, friends_failed, self_sent,
+        )
+
+
+async def list_alerts(user_id: UUID, limit: int = 10) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT reason, friends_sent, friends_failed, self_sent, created_at
+            FROM well_being_alerts WHERE user_id = $1
+            ORDER BY created_at DESC LIMIT $2
+            """,
+            user_id, limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def last_alert_at(user_id: UUID):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT last_alert_at FROM users WHERE id = $1", user_id)
+
+
 async def mark_alert_sent(user_id: UUID) -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -565,14 +657,15 @@ async def insert_community_message(
     *,
     is_bot: bool = False,
     reply_to: Optional[UUID] = None,
+    image_id: Optional[UUID] = None,
 ) -> CommunityMessageOut:
-    """Post one anonymous message to a community channel."""
+    """Post one message to a community channel under the author's alias."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO community_messages (channel_id, handle, content, is_bot, reply_to)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO community_messages (channel_id, handle, content, is_bot, reply_to, image_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
             channel_id,
@@ -580,6 +673,7 @@ async def insert_community_message(
             content,
             is_bot,
             reply_to,
+            image_id,
         )
     return CommunityMessageOut.model_validate(dict(row))
 
@@ -592,7 +686,7 @@ async def fetch_community_messages(channel_id: UUID, limit: int = 100) -> list[C
             """
             SELECT * FROM (
                 SELECT * FROM community_messages
-                WHERE channel_id = $1
+                WHERE channel_id = $1 AND created_at > now() - make_interval(hours => $3)
                 ORDER BY created_at DESC
                 LIMIT $2
             ) recent
@@ -600,6 +694,7 @@ async def fetch_community_messages(channel_id: UUID, limit: int = 100) -> list[C
             """,
             channel_id,
             limit,
+            COMMUNITY_TTL_HOURS,
         )
     return [CommunityMessageOut.model_validate(dict(r)) for r in result]
 
@@ -616,11 +711,13 @@ async def list_channels() -> list[ChannelOut]:
                    MAX(m.created_at) AS last_message_at,
                    COUNT(m.id) AS message_count
             FROM community_channels c
-            LEFT JOIN community_messages m ON m.channel_id = c.id
+            LEFT JOIN community_messages m
+                   ON m.channel_id = c.id AND m.created_at > now() - make_interval(hours => $1)
             GROUP BY c.id
             ORDER BY c.is_default DESC, c.position ASC,
                      MAX(m.created_at) DESC NULLS LAST, c.created_at DESC
-            """
+            """,
+            COMMUNITY_TTL_HOURS,
         )
     return [ChannelOut.model_validate(dict(r)) for r in rows]
 
@@ -686,3 +783,137 @@ async def recent_human_handles(channel_id: UUID, minutes: int) -> set[str]:
             minutes,
         )
     return {r["handle"] for r in rows}
+
+
+# --- community aliases, mentions, images, expiry ---
+
+async def get_alias(user_id: UUID) -> Optional[str]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT community_alias FROM users WHERE id = $1", user_id)
+
+
+async def alias_owner(alias: str) -> Optional[UUID]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT id FROM users WHERE lower(community_alias) = lower($1)", alias
+        )
+
+
+async def set_alias(user_id: UUID, alias: str) -> None:
+    """Raises asyncpg.UniqueViolationError if another person has it."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET community_alias = $2 WHERE id = $1", user_id, alias)
+
+
+async def users_for_aliases(aliases: list[str]) -> dict[str, UUID]:
+    """Map lower-cased aliases to user ids, for the ones that exist."""
+    if not aliases:
+        return {}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, lower(community_alias) AS alias FROM users WHERE lower(community_alias) = ANY($1::text[])",
+            [a.lower() for a in aliases],
+        )
+    return {r["alias"]: r["id"] for r in rows}
+
+
+async def search_aliases(prefix: str, limit: int = 8) -> list[str]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT community_alias FROM users
+            WHERE community_alias IS NOT NULL AND lower(community_alias) LIKE lower($1) || '%'
+            ORDER BY lower(community_alias) LIMIT $2
+            """,
+            prefix,
+            limit,
+        )
+    return [r["community_alias"] for r in rows]
+
+
+async def insert_image(data: bytes, mime: str, width: int, height: int) -> UUID:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "INSERT INTO community_images (data, mime, width, height) VALUES ($1, $2, $3, $4) RETURNING id",
+            data, mime, width, height,
+        )
+
+
+async def get_image(image_id: UUID) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT data, mime FROM community_images
+            WHERE id = $1 AND created_at > now() - make_interval(hours => $2)
+            """,
+            image_id,
+            COMMUNITY_TTL_HOURS,
+        )
+    return dict(row) if row else None
+
+
+async def purge_expired_community() -> tuple[int, int]:
+    """Delete community messages and images older than the TTL. Returns (messages, images)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            m = await conn.execute(
+                "DELETE FROM community_messages WHERE created_at <= now() - make_interval(hours => $1)",
+                COMMUNITY_TTL_HOURS,
+            )
+            i = await conn.execute(
+                "DELETE FROM community_images WHERE created_at <= now() - make_interval(hours => $1)",
+                COMMUNITY_TTL_HOURS,
+            )
+    return int(m.split()[-1]), int(i.split()[-1])
+
+
+# --- profile ---
+
+async def update_profile(
+    user_id: UUID, preferred_name: Optional[str], language: str, interests: list[str]
+) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE users
+               SET preferred_name = $2, language = $3, interests = $4,
+                   onboarded_at = COALESCE(onboarded_at, now())
+             WHERE id = $1
+            """,
+            user_id, preferred_name, language, interests,
+        )
+
+
+async def set_email(user_id: UUID, email: str) -> None:
+    """Raises asyncpg.UniqueViolationError if another account has it."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET email = $2 WHERE id = $1", user_id, email)
+
+
+async def users_needing_setup_reminder() -> list[dict]:
+    """Accounts with an email that haven't finished their profile and weren't reminded yet."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, username, email FROM users
+            WHERE email IS NOT NULL AND onboarded_at IS NULL AND setup_reminder_sent_at IS NULL
+            """
+        )
+    return [dict(r) for r in rows]
+
+
+async def mark_setup_reminder_sent(user_id: UUID) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET setup_reminder_sent_at = now() WHERE id = $1", user_id)
