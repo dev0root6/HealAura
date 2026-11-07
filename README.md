@@ -67,7 +67,33 @@ Each classification gets a confidence score via self-consistency (multiple concu
 - Python 3.11+
 - Node.js 18+ and npm
 - A [Neon](https://neon.tech/) Postgres database (or any Postgres via `postgresql://`)
-- A [Sarvam AI](https://www.sarvam.ai/) API key
+- A [Sarvam AI](https://www.sarvam.ai/) API key (see below)
+
+### Getting a Sarvam AI API Key
+
+HealAura uses [Sarvam AI](https://www.sarvam.ai/) for all NLP — text classification, sentiment analysis, named-entity recognition (Sarvam-105B), speech-to-text (Saaras v3), and text-to-speech (Bulbul v3). It handles code-mixed input (Tanglish, Hinglish) natively.
+
+1. **Sign up** at [indus.sarvam.ai](https://indus.sarvam.ai/)
+2. **Create an API key** at [Key Management](https://indus.sarvam.ai/key-management)
+3. **Copy the key** into your `.env` file as `SARVAM_API_KEY`
+
+**Pricing:** Pay-as-you-go with ₹100 in free credits on sign-up (no expiry). Example rates:
+
+| Service | Model | Rate |
+| --- | --- | --- |
+| Text (chat/classify) | Sarvam-105B | ₹15 input / ₹60 output per 1M tokens |
+| Speech-to-text | Saaras v3 | ₹0.49 per minute |
+| Text-to-speech | Bulbul v3/v4 | ₹1.00 per 1,000 characters |
+
+Prices in INR, exclude GST. Monitor usage and rate limits at [indus.sarvam.ai/billing](https://indus.sarvam.ai/billing).
+
+**API details:**
+- Base URL: `https://api.sarvam.ai`
+- Auth header: `api-subscription-key: <YOUR_SARVAM_API_KEY>`
+- Python SDK (optional): `pip install -U sarvamai`
+- HealAura calls Sarvam directly via HTTP in `backend/sarvam_client.py` — no SDK needed.
+
+**Rate limits:** Each entry makes 3–4 concurrent Sarvam calls (1 classification + 2 confidence samples + 1 back-channel). Free-tier rate limits may cause HTTP 429 on heavy use. Check limits at [indus.sarvam.ai/rate-limits](https://indus.sarvam.ai/rate-limits).
 
 ### Configuration
 
