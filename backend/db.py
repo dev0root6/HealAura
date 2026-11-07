@@ -1,7 +1,9 @@
 import logging
 import os
+import socket
 from datetime import date, time
 from typing import Optional
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import asyncpg
@@ -197,6 +199,22 @@ CREATE INDEX IF NOT EXISTS messages_user_idx ON messages (user_id);
 """
 
 
+def _connect_url() -> str:
+    """DATABASE_URL, pinned to the host's IPv4 address when NEON_FORCE_IPV4 is set.
+
+    Some networks hand out an IPv6 route that doesn't actually carry traffic, so
+    connecting by hostname hangs. Connecting by IP drops TLS SNI, which Neon uses
+    to pick the endpoint, so the endpoint id is passed as a connection option.
+    """
+    if os.getenv("NEON_FORCE_IPV4", "").lower() not in ("1", "true", "yes"):
+        return DATABASE_URL
+    host = urlsplit(DATABASE_URL).hostname
+    ip = socket.getaddrinfo(host, 5432, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+    endpoint = host.split(".")[0].removesuffix("-pooler")
+    sep = "&" if "?" in DATABASE_URL else "?"
+    return DATABASE_URL.replace(host, ip, 1) + f"{sep}options=endpoint%3D{endpoint}"
+
+
 async def get_pool() -> asyncpg.Pool:
     """Return the shared connection pool, creating it if necessary."""
     global _pool
@@ -207,7 +225,7 @@ async def get_pool() -> asyncpg.Pool:
         # so cached prepared statements go stale after a schema change (e.g. a new
         # column) and fail with InvalidCachedStatementError.
         _pool = await asyncpg.create_pool(
-            DATABASE_URL, min_size=1, max_size=10, statement_cache_size=0
+            _connect_url(), min_size=1, max_size=10, statement_cache_size=0
         )
     return _pool
 
